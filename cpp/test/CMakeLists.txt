@@ -1,4 +1,6 @@
 find_package(GTest REQUIRED)
+find_package(Arrow REQUIRED)
+include_directories(${Arrow_INCLUDE_DIRS})
 
 if (WITH_ASAN STREQUAL "True")
   set(CMAKE_CXX_FLAGS
@@ -6,9 +8,12 @@ if (WITH_ASAN STREQUAL "True")
   )
 endif()
 
-file(GLOB_RECURSE BUSTUB_TEST_SOURCES "${PROJECT_SOURCE_DIR}/test/*.cpp")
+file(GLOB_RECURSE MILVUS_TEST_SOURCES "${PROJECT_SOURCE_DIR}/test/*.cpp")
 
-add_executable(milvus_test ${BUSTUB_TEST_SOURCES})
+# Remove s3_test.cpp from the main test suite
+list(REMOVE_ITEM MILVUS_TEST_SOURCES "${PROJECT_SOURCE_DIR}/test/s3_test.cpp")
+
+add_executable(milvus_test ${MILVUS_TEST_SOURCES})
 
 target_include_directories(milvus_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -17,8 +22,16 @@ set_target_properties(milvus_test PROPERTIES
 )
 
 target_link_libraries(
-  milvus_test PRIVATE milvus-storage GTest::gtest_main
+  milvus_test PRIVATE milvus-storage GTest::gtest_main arrow::arrow
 )
 
 include(GoogleTest)
 gtest_discover_tests(milvus_test)
+
+# Create separate executable for s3_test.cpp
+add_executable(s3_test ${PROJECT_SOURCE_DIR}/test/s3_test.cpp)
+target_link_libraries(s3_test PRIVATE AWS::aws-sdk-cpp-identity-management AWS::aws-sdk-cpp-s3 AWS::aws-sdk-cpp-s3-crt)
+set_target_properties(s3_test PROPERTIES
+  CXX_STANDARD 17
+)
+
