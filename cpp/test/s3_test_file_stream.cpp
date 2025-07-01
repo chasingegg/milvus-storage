@@ -15,6 +15,22 @@
 #include <aws/s3-crt/model/GetObjectRequest.h>
 #include <aws/s3-crt/model/GetObjectResult.h>
 
+// Include fstream for file streaming
+// #include <aws/fstream.h>
+
+// Include headers for pre-allocated buffer streaming
+#include <aws/core/utils/stream/PreallocatedStreamBuf.h>
+
+// Include CRT core for proper initialization
+#include <aws/crt/Api.h>
+
+// Headers for POSIX I/O and Direct I/O
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <cerrno> // For errno
+
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -27,6 +43,8 @@
 #include <iomanip>
 #include <future>
 #include <sstream>
+#include <queue>
+#include <functional>
 
 using namespace Aws;
 using namespace Aws::S3;
@@ -39,6 +57,7 @@ struct TestConfig {
     int concurrencyLevel;
     int requestCount;
     int fileCount;
+    int writerThreads; // Number of threads for writing files
     std::string testName;
 };
 
@@ -56,16 +75,21 @@ struct PerformanceMetrics {
 
 class PerformanceTester {
 private:
+    // Atomics for tracking live test state
     std::atomic<int> completedRequests{0};
     std::atomic<int> successCount{0};
     std::atomic<int> failureCount{0};
     std::atomic<size_t> totalBytes{0};
+
+    // Other state
     std::vector<std::chrono::milliseconds> latencies;
     std::mutex latencyMutex;
     std::condition_variable completionCV;
     std::mutex completionMutex;
 
 public:
+    PerformanceTester() {}
+
     // Test S3Client async performance
     PerformanceMetrics testS3ClientAsync(const TestConfig& config) {
         std::cout << "\n=== Testing S3Client Async: " << config.testName << " ===" << std::endl;
@@ -88,10 +112,21 @@ public:
             request.SetBucket(config.bucketName.c_str());
             request.SetKey(config.objectKeyPrefix + "_" + std::to_string(i % config.fileCount));
             
+            // Create a unique filename for this download
+            const std::string outputFileName = "/home/zilliz/gao/s3_download_" + std::to_string(i) + ".dat";
+            // Set the response stream factory to a file stream.
+            // This tells the SDK to stream the response data directly to the file
+            // instead of buffering it in memory.
+            request.SetResponseStreamFactory([=]() {
+                return Aws::New<Aws::FStream>("GetObjectStream",
+                                              outputFileName.c_str(),
+                                              std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+            });
+
             auto requestStartTime = std::chrono::high_resolution_clock::now();
             
             s3Client.GetObjectAsync(request, 
-                [this, requestStartTime, config, i](const Aws::S3::S3Client* client,
+                [this, requestStartTime, &config, i, outputFileName](const Aws::S3::S3Client* client,
                                                 const Aws::S3::Model::GetObjectRequest& req,
                                                 const Aws::S3::Model::GetObjectOutcome& outcome,
                                                 const std::shared_ptr<const Aws::Client::AsyncCallerContext>& context) {
@@ -99,28 +134,20 @@ public:
                     auto requestEndTime = std::chrono::high_resolution_clock::now();
                     auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
                         requestEndTime - requestStartTime);
-                    
-                    // {
-                        // std::lock_guard<std::mutex> lock(latencyMutex);
-                        // latencies.push_back(latency);
-                    // }
+
                     latencies[i] = latency;
                     
                     if (outcome.IsSuccess()) {
                         successCount++;
-                        // auto& result = outcome.GetResult();
-                        // auto& stream = result.GetBody();
-                        auto& result = const_cast<Aws::S3::Model::GetObjectResult&>(outcome.GetResult());
-                        auto& stream = result.GetBody();
-
-                        // Calculate bytes transferred
-                        stream.seekg(0, std::ios::end);
-                        size_t bytes = stream.tellg();
-                        totalBytes += bytes;
-                        stream.seekg(0, std::ios::beg);
+                        // The body has been streamed to the pre-allocated buffer.
+                        auto& result = outcome.GetResult();
+                        long long contentLength = result.GetContentLength();
+                        totalBytes += contentLength;
                         
-                        std::cout << "✓ Request completed successfully (" << bytes << " bytes, " 
-                                  << latency.count() << "ms)" << std::endl;
+                        std::cout << "✓ Request successful, write to file " << outputFileName
+                                    << " (" << contentLength << " bytes, " 
+                                    << latency.count() << "ms)" << std::endl;
+
                     } else {
                         failureCount++;
                         std::cout << "✗ Request failed: " << outcome.GetError().GetMessage() << std::endl;
@@ -133,13 +160,12 @@ public:
                     }
                 });
             
-            // Add small delay to prevent overwhelming the service
-            // std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         
-        // Wait for completion
-        std::unique_lock<std::mutex> lock(completionMutex);
-        completionCV.wait(lock, [&] { return completedRequests >= config.requestCount; });
+        // Wait for both download completion AND write completion
+        std::unique_lock<std::mutex> downloadLock(completionMutex);
+        completionCV.wait(downloadLock, [&] { return completedRequests >= config.requestCount; });
+        std::cout << "✓ All downloads completed!" << std::endl;
         
         auto endTime = std::chrono::high_resolution_clock::now();
         
@@ -150,79 +176,94 @@ public:
     PerformanceMetrics testS3CrtClientAsync(const TestConfig& config) {
         std::cout << "\n=== Testing S3CrtClient Async: " << config.testName << " ===" << std::endl;
         
-        // Configure S3CrtClient
-        Aws::S3Crt::ClientConfiguration clientConfig;
-        clientConfig.region = "us-west-2";
-        clientConfig.throughputTargetGbps = 20.0; // Set high throughput target
-        
-        Aws::S3Crt::S3CrtClient s3CrtClient(clientConfig);
-        
-        resetCounters();
-        auto startTime = std::chrono::high_resolution_clock::now();
-        latencies.resize(config.requestCount);
-        
-        // Launch async requests
-        for (int i = 0; i < config.requestCount; ++i) {
-            Aws::S3Crt::Model::GetObjectRequest request;
-            request.SetBucket(config.bucketName.c_str());
-            request.SetKey(config.objectKeyPrefix + "_" + std::to_string(i % config.fileCount));
+        try {
+            Aws::S3Crt::ClientConfiguration clientConfig;
+            clientConfig.region = "us-west-2";
+            clientConfig.throughputTargetGbps = 20;
             
-            auto requestStartTime = std::chrono::high_resolution_clock::now();
+            Aws::S3Crt::S3CrtClient s3CrtClient(clientConfig);
             
-            s3CrtClient.GetObjectAsync(request,
-                [this, requestStartTime, config, i](const Aws::S3Crt::S3CrtClient* client,
-                                                const Aws::S3Crt::Model::GetObjectRequest& req,
-                                                const Aws::S3Crt::Model::GetObjectOutcome& outcome,
-                                                const std::shared_ptr<const Aws::Client::AsyncCallerContext>& context) {
-                    
-                    auto requestEndTime = std::chrono::high_resolution_clock::now();
-                    auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        requestEndTime - requestStartTime);
-                    
-                    // {
-                    //     std::lock_guard<std::mutex> lock(latencyMutex);
-                    //     latencies.push_back(latency);
-                    // }
-                    latencies[i] = latency;
-                    
-                    if (outcome.IsSuccess()) {
-                        successCount++;
-                        // auto& result = outcome.GetResult();
-                        // auto& stream = result.GetBody();
-                        auto& result = const_cast<Aws::S3Crt::Model::GetObjectResult&>(outcome.GetResult());
-                        auto& stream = result.GetBody();
-                        
-                        // Calculate bytes transferred
-                        stream.seekg(0, std::ios::end);
-                        size_t bytes = stream.tellg();
-                        totalBytes += bytes;
-                        stream.seekg(0, std::ios::beg);
-                        
-                        std::cout << "✓ Request completed successfully (" << bytes << " bytes, " 
-                                  << latency.count() << "ms)" << std::endl;
-                    } else {
-                        failureCount++;
-                        std::cout << "✗ Request failed: " << outcome.GetError().GetMessage() << std::endl;
-                    }
-                    
-                    int completed = ++completedRequests;
-                    if (completed >= config.requestCount) {
-                        std::lock_guard<std::mutex> lock(completionMutex);
-                        completionCV.notify_one();
-                    }
+            std::cout << "Starting S3CrtClient async operations..." << std::endl;
+            
+            resetCounters();
+            auto startTime = std::chrono::high_resolution_clock::now();
+            latencies.resize(config.requestCount);
+            
+            // Launch async requests
+            for (int i = 0; i < config.requestCount; ++i) {
+                Aws::S3Crt::Model::GetObjectRequest request;
+                request.SetBucket(config.bucketName.c_str());
+                request.SetKey(config.objectKeyPrefix + "_" + std::to_string(i % config.fileCount));
+                
+                // Create a unique filename for this download
+                const std::string outputFileName = "/home/zilliz/gao/s3crt_download_" + std::to_string(i) + ".dat";
+                // Set the response stream factory to a file stream.
+                // This tells the SDK to stream the response data directly to the file
+                // instead of buffering it in memory.
+                request.SetResponseStreamFactory([=]() {
+                    return Aws::New<Aws::FStream>("GetObjectStream",
+                                                outputFileName.c_str(),
+                                                std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
                 });
+                auto requestStartTime = std::chrono::high_resolution_clock::now();
+                
+                s3CrtClient.GetObjectAsync(request,
+                    [this, requestStartTime, &config, i, outputFileName](const Aws::S3Crt::S3CrtClient* client,
+                                                    const Aws::S3Crt::Model::GetObjectRequest& req,
+                                                    const Aws::S3Crt::Model::GetObjectOutcome& outcome,
+                                                    const std::shared_ptr<const Aws::Client::AsyncCallerContext>& context) {
+                        
+                        auto requestEndTime = std::chrono::high_resolution_clock::now();
+                        auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            requestEndTime - requestStartTime);
+                        
+                        latencies[i] = latency;
+                        
+                        if (outcome.IsSuccess()) {
+                            successCount++;
+                            // The body has been streamed to the pre-allocated buffer.
+                            auto& result = outcome.GetResult();
+                            long long contentLength = result.GetContentLength();
+                            totalBytes += contentLength;
+                                
+                            std::cout << "✓ Request successful, write to file " << outputFileName
+                                        << " (" << contentLength << " bytes, " 
+                                        << latency.count() << "ms)" << std::endl;
+
+                        } else {
+                            failureCount++;
+                            std::cout << "✗ Request failed: " << outcome.GetError().GetMessage() << std::endl;
+                        }
+                        
+                        int completed = ++completedRequests;
+                        if (completed >= config.requestCount) {
+                            std::lock_guard<std::mutex> lock(completionMutex);
+                            completionCV.notify_one();
+                        }
+                    });
+                
+            }
             
-            // Add small delay to prevent overwhelming the service
-            // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            // Wait for both download completion AND write completion
+            std::unique_lock<std::mutex> downloadLock(completionMutex);
+            completionCV.wait(downloadLock, [&] { return completedRequests >= config.requestCount; });
+            std::cout << "✓ All downloads completed!" << std::endl;
+            
+            auto endTime = std::chrono::high_resolution_clock::now();
+            
+            return calculateMetrics(startTime, endTime, config);
+            
+        } catch (const std::exception& e) {
+            std::cerr << "✗ Exception in S3CrtClient test: " << e.what() << std::endl;
+            PerformanceMetrics emptyMetrics;
+            emptyMetrics.failedRequests = config.requestCount;
+            return emptyMetrics;
+        } catch (...) {
+            std::cerr << "✗ Unknown exception in S3CrtClient test" << std::endl;
+            PerformanceMetrics emptyMetrics;
+            emptyMetrics.failedRequests = config.requestCount;
+            return emptyMetrics;
         }
-        
-        // Wait for completion
-        std::unique_lock<std::mutex> lock(completionMutex);
-        completionCV.wait(lock, [&] { return completedRequests >= config.requestCount; });
-        
-        auto endTime = std::chrono::high_resolution_clock::now();
-        
-        return calculateMetrics(startTime, endTime, config);
     }
     
 private:
@@ -346,32 +387,37 @@ void saveResultsToFile(const TestConfig& config,
 }
 
 void runPerformanceTests() {
-    PerformanceTester tester;
-    
     // Test configurations for different scenarios
     std::vector<TestConfig> testConfigs = {
-        // Small objects, low concurrency
-        // {"uat-test-bucket-temp-001", "test-small-object.dat", 1024 * 1024, 10, 200, 10, "Small Objects (1MB), Low Concurrency"},
-        
-        // // Medium objects, medium concurrency
-        {"uat-test-bucket-temp-001", "test-medium-object.dat", 4 * 1024 * 1024, 10, 20, 10, "Medium Objects (4MB), Medium Concurrency"},
-        
-        // // Large objects, high concurrency
-        // {"your-test-bucket", "test-large-object.dat", 100 * 1024 * 1024, 10, 5, 10, "Large Objects (100MB), High Concurrency"},
+        //    std::string bucketName;
+        // std::string objectKeyPrefix;
+        // size_t objectSize;  // Expected object size for throughput calculation
+        // int concurrencyLevel;
+        // int requestCount;
+        // int fileCount;
+        // int writerThreads;
+        // std::string testName;
+        {"uat-test-bucket-temp-001", "test-small-object.dat", 1024 * 1024, 16, 64, 10, 8, "S3 vs S3CRT (1MB Objects)"},
+
+        {"uat-test-bucket-temp-001", "test-medium-object.dat", 4 * 1024 * 1024, 16, 64, 10, 8, "S3 vs S3CRT (4MB Objects)"},
+
     };
     
     for (const auto& config : testConfigs) {
+        PerformanceTester tester;
         std::cout << "\n" << std::string(80, '#') << std::endl;
         std::cout << "Running Test: " << config.testName << std::endl;
         std::cout << "Bucket: " << config.bucketName << ", Object: " << config.objectKeyPrefix << std::endl;
-        std::cout << "Concurrency: " << config.concurrencyLevel << ", Requests: " << config.requestCount << ", Files: " << config.fileCount << std::endl;
+        std::cout << "Concurrency: " << config.concurrencyLevel << ", Requests: " << config.requestCount 
+                  << ", Files: " << config.fileCount << ", Writers: " << config.writerThreads << std::endl;
         std::cout << std::string(80, '#') << std::endl;
         
         // Test S3Client
         auto s3Metrics = tester.testS3ClientAsync(config);
         printMetrics("S3Client", s3Metrics);
         
-        // Small delay between tests
+        // Small delay between tests to ensure clean separation
+        std::cout << "\n...Pausing for 2 seconds before next test...\n" << std::endl;
         std::this_thread::sleep_for(std::chrono::seconds(2));
         
         // Test S3CrtClient
@@ -379,24 +425,38 @@ void runPerformanceTests() {
         printMetrics("S3CrtClient", s3CrtMetrics);
         
         // // Compare results
-        // compareMetrics(s3Metrics, s3CrtMetrics);
-        
-        // Save results to file
-        // saveResultsToFile(config, s3Metrics, s3CrtMetrics);
+        // if (s3Metrics.successfulRequests > 0 && s3CrtMetrics.successfulRequests > 0) {
+        //     compareMetrics(s3Metrics, s3CrtMetrics);
+        //     saveResultsToFile(config, s3Metrics, s3CrtMetrics);
+        // } else {
+        //     std::cout << "\nComparison skipped due to failed requests in one of the tests." << std::endl;
+        // }
     }
 }
 
 int main(int argc, char* argv[]) {
-    // Initialize AWS SDK
+    // CRITICAL: Initialize AWS CRT API first - this is required for S3CrtClient
+    std::cout << "Initializing AWS CRT Core API..." << std::endl;
+    Aws::Crt::ApiHandle apiHandle;
+    std::cout << "✓ AWS CRT Core API initialized" << std::endl;
+    
+    // Initialize AWS SDK with CRT support
     Aws::SDKOptions options;
-    options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
+    options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info; // Reduced logging for less noise
     options.loggingOptions.logger_create_fn = [] {
         return std::make_shared<Aws::Utils::Logging::DefaultLogSystem>(
             Aws::Utils::Logging::LogLevel::Info, "performance_test");
     };
     
-    Aws::InitAPI(options);
+    // Enable CRT support for S3CrtClient
+    // options.httpOptions.installSigPipeHandler = true;
     
+    // Initialize AWS SDK after CRT
+    std::cout << "Initializing AWS SDK..." << std::endl;
+    Aws::InitAPI(options);
+    std::cout << "✓ AWS SDK initialized with CRT support" << std::endl;
+    
+    int result = 0;
     try {
         std::cout << "AWS SDK C++ S3 Async Performance Test" << std::endl;
         std::cout << "======================================" << std::endl;
@@ -410,10 +470,19 @@ int main(int argc, char* argv[]) {
         
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
+        result = 1;
+    } catch (...) {
+        std::cerr << "Unknown error occurred" << std::endl;
+        result = 1;
     }
     
-    // Cleanup AWS SDK
+    // CRITICAL: Proper cleanup order - SDK first, then CRT
+    std::cout << "Shutting down AWS SDK..." << std::endl;
     Aws::ShutdownAPI(options);
+    std::cout << "✓ AWS SDK shutdown complete" << std::endl;
     
-    return 0;
+    // Let CRT ApiHandle cleanup automatically when it goes out of scope
+    std::cout << "AWS CRT will cleanup automatically..." << std::endl;
+    
+    return result;
 } 
