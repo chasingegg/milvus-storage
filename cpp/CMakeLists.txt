@@ -37,6 +37,7 @@ list(APPEND LINK_LIBS protobuf::protobuf)
 list(APPEND LINK_LIBS AWS::aws-sdk-cpp-identity-management)
 list(APPEND LINK_LIBS AWS::aws-sdk-cpp-s3)
 list(APPEND LINK_LIBS AWS::aws-sdk-cpp-s3-crt)
+list(APPEND LINK_LIBS AWS::aws-sdk-cpp-core)
 list(APPEND LINK_LIBS glog::glog)
 list(APPEND LINK_LIBS google-cloud-cpp::storage)
 

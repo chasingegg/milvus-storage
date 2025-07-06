@@ -35,7 +35,7 @@ class StorageConan(ConanFile):
         "with_ut": True,
         "aws-sdk-cpp:config": True,
         "aws-sdk-cpp:text-to-speech": False,
-        "aws-sdk-cpp:transfer": True,
+        "aws-sdk-cpp:transfer": False,
         "aws-sdk-cpp:s3-crt": True,
         "arrow:with_s3": True,
         "arrow:with_azure": False,
