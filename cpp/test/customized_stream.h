@@ -200,6 +200,76 @@ private:
 };
 
 
+
+// Custom stream buffer that discards all data (like /dev/null)
+class NullStreamBuf : public std::streambuf {
+  public:
+  NullStreamBuf() = default;
+  
+  protected:
+  // Override overflow to discard all data (output)
+  int_type overflow(int_type c) override {
+    // Just return the character to indicate success
+    return c;
+  }
+  
+  // Override xsputn for bulk writes - discard all data (output)
+  std::streamsize xsputn(const char* s, std::streamsize n) override {
+    // Pretend we wrote all the data by returning n
+    return n;
+  }
+  
+  // Override underflow for input operations - always EOF
+  int_type underflow() override {
+    return traits_type::eof();
+  }
+  
+  // Override xsgetn for bulk reads - always return 0 (no data available)
+  std::streamsize xsgetn(char* s, std::streamsize n) override {
+    return 0;
+  }
+  
+  // Override seekoff for seeking operations
+  pos_type seekoff(off_type off, std::ios_base::seekdir way, std::ios_base::openmode which) override {
+    // Always return success for seeking
+    return pos_type(off);
+  }
+  
+  // Override seekpos for absolute positioning
+  pos_type seekpos(pos_type pos, std::ios_base::openmode which) override {
+    // Always return the requested position
+    return pos;
+  }
+};
+
+// Custom stream that discards all data (bidirectional iostream)
+class NullStream : public std::iostream {
+  private:
+  NullStreamBuf null_buf_;
+  
+  public:
+  NullStream() : std::iostream(&null_buf_) {}
+  
+  // Make it movable
+  NullStream(NullStream&& other) noexcept : std::iostream(std::move(other)), null_buf_(std::move(other.null_buf_)) {
+    set_rdbuf(&null_buf_);
+  }
+  
+  NullStream& operator=(NullStream&& other) noexcept {
+    if (this != &other) {
+      std::iostream::operator=(std::move(other));
+      null_buf_ = std::move(other.null_buf_);
+      set_rdbuf(&null_buf_);
+    }
+    return *this;
+  }
+  
+  // Delete copy operations
+  NullStream(const NullStream&) = delete;
+  NullStream& operator=(const NullStream&) = delete;
+};
+
+
 inline std::string FormatRange(int64_t start, int64_t length) {
   // Format a HTTP range header value
   std::stringstream ss;

@@ -59,3 +59,21 @@ set_target_properties(s3_test_direct_io PROPERTIES
   CXX_STANDARD 17
 )
 
+add_executable(s3_test_nullstream_vs_memory ${PROJECT_SOURCE_DIR}/test/s3_test_nullstream_vs_memory.cpp)
+target_link_libraries(s3_test_nullstream_vs_memory PRIVATE AWS::aws-sdk-cpp-identity-management AWS::aws-sdk-cpp-s3 AWS::aws-sdk-cpp-s3-crt)
+set_target_properties(s3_test_nullstream_vs_memory PROPERTIES
+  CXX_STANDARD 17
+)
+
+
+
+# add_executable(s3_read_performance_test s3_read_performance_test.cpp)
+# target_include_directories(s3_read_performance_test PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# target_link_libraries(s3_read_performance_test PRIVATE
+#   AWS::aws-sdk-cpp-identity-management AWS::aws-sdk-cpp-s3 AWS::aws-sdk-cpp-s3-crt
+#   GTest::gtest_main arrow::arrow
+#   milvus-storage
+# )
+# add_test(s3_read_performance_test s3_read_performance_test)
+

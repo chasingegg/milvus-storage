@@ -158,7 +158,7 @@ public:
         // Configure S3Client
         Aws::Client::ClientConfiguration clientConfig;
         clientConfig.region = "us-west-2";
-        clientConfig.executor = std::make_shared<Aws::Utils::Threading::PooledThreadExecutor>(config.concurrencyLevel * 2);
+        clientConfig.executor = std::make_shared<Aws::Utils::Threading::PooledThreadExecutor>(config.concurrencyLevel);
         
         Aws::S3::S3Client s3Client(clientConfig);
         
@@ -174,7 +174,7 @@ public:
             request.SetKey(config.objectKeyPrefix + "_" + std::to_string(i % config.fileCount));
             
             // Create a unique filename for this download
-            // const std::string outputFileName = "/home/zilliz/storage/s3_download_" + std::to_string(i) + ".dat";
+            // const std::string outputFileName = "/data/storage/s3_download_" + std::to_string(i) + ".dat";
             // // Set the response stream factory to a file stream.
             // // This tells the SDK to stream the response data directly to the file
             // // instead of buffering it in memory.
@@ -227,7 +227,7 @@ public:
                         totalBytes += contentLength;
                         
                         // Now, write the buffer to a local file using O_DIRECT
-                        const std::string outputFileName = "/home/zilliz/gao/s3_download_" + std::to_string(i) + ".dat";
+                        const std::string outputFileName = "/data/gaochao/s3_download_" + std::to_string(i) + ".dat";
                         
                         auto writeFile = [this, buffer, contentLength, outputFileName, &config] {
                             int fd = open(outputFileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, 0644);
@@ -257,9 +257,9 @@ public:
                             writeFile(); // Fallback to synchronous write
                         }
 
-                        std::cout << "✓ Request successful, enqueued write to " << outputFileName
-                                    << " (" << contentLength << " bytes, " 
-                                    << latency.count() << "ms)" << std::endl;
+                        // std::cout << "✓ Request successful, enqueued write to " << outputFileName
+                        //             << " (" << contentLength << " bytes, " 
+                        //             << latency.count() << "ms)" << std::endl;
 
                     } else {
                         failureCount++;
@@ -359,7 +359,7 @@ public:
                             totalBytes += contentLength;
                             
                             // Now, write the buffer to a local file using O_DIRECT
-                            const std::string outputFileName = "/home/zilliz/gao/s3crt_download_" + std::to_string(i) + ".dat";
+                            const std::string outputFileName = "/data/gaochao/s3crt_download_" + std::to_string(i) + ".dat";
                             
                             auto writeFile = [this, buffer, contentLength, outputFileName, &config] {
                                 int fd = open(outputFileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, 0644);
@@ -389,9 +389,9 @@ public:
                                 writeFile(); // Fallback to synchronous write
                             }
                             
-                            std::cout << "✓ Request successful, enqueued write to " << outputFileName
-                                        << " (" << contentLength << " bytes, " 
-                                        << latency.count() << "ms)" << std::endl;
+                            // std::cout << "✓ Request successful, enqueued write to " << outputFileName
+                                        // << " (" << contentLength << " bytes, " 
+                                        // << latency.count() << "ms)" << std::endl;
 
                         } else {
                             failureCount++;
@@ -573,10 +573,10 @@ void runPerformanceTests() {
         // int writerThreads;
         // std::string testName;
         // Small objects, low concurrency
-        {"uat-test-bucket-temp-001", "test-small-object.dat", 1024 * 1024, 16, 48, 10, 8, "Small Objects (1MB), 8 Writers"},
+        // {"uat-test-bucket-temp-001", "test-small-object.dat", 1024 * 1024, 16, 1000, 10, 8, "Small Objects (1MB), 8 Writers"},
         
         // // Medium objects, medium concurrency
-        // {"your-test-bucket", "test-medium-object.dat", 4 * 1024 * 1024, 5, 10, 10, "Medium Objects (4MB), Medium Concurrency"},
+        {"uat-test-bucket-temp-001", "test-object-4.0mb.dat", 4 * 1024 * 1024, 16, 1000, 10, 8, "Medium Objects (4MB), Medium Concurrency"},
         
         // // Large objects, high concurrency
         // {"your-test-bucket", "test-large-object.dat", 100 * 1024 * 1024, 10, 5, 10, "Large Objects (100MB), High Concurrency"},

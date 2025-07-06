@@ -130,7 +130,7 @@ public:
         // Configure S3Client
         Aws::Client::ClientConfiguration clientConfig;
         clientConfig.region = "us-west-2";
-        clientConfig.executor = std::make_shared<Aws::Utils::Threading::PooledThreadExecutor>(config.concurrencyLevel * 2);
+        clientConfig.executor = std::make_shared<Aws::Utils::Threading::PooledThreadExecutor>(config.concurrencyLevel);
         
         Aws::S3::S3Client s3Client(clientConfig);
         
@@ -147,7 +147,7 @@ public:
             request.SetRange(ToAwsString(FormatRange(0, config.objectSize)));
             
             // Create a unique filename for this download
-            const std::string outputFileName = "/home/zilliz/gao/s3_download_" + std::to_string(i) + ".dat";
+            const std::string outputFileName = "/data/gaochao/s3_download_" + std::to_string(i) + ".dat";
             // Set the response stream factory to a file stream.
 
             request.SetResponseStreamFactory([=]() {
@@ -175,13 +175,13 @@ public:
                         long long contentLength = result.GetContentLength();
                         totalBytes += contentLength;
                         
-                        std::cout << "✓ Request successful, write to file " << outputFileName
-                                    << " (" << contentLength << " bytes, " 
-                                    << latency.count() << "ms)" << std::endl;
+                        // std::cout << "✓ Request successful, write to file " << outputFileName
+                        //             << " (" << contentLength << " bytes, " 
+                        //             << latency.count() << "ms)" << std::endl;
 
                         if (config.validate_writes) {
                             result.GetBody().flush();
-                            const std::string referenceFileName = "/home/zilliz/gao/s3_reference_download_" + std::to_string(i % config.fileCount) + ".dat";
+                            const std::string referenceFileName = "/data/gaochao/s3_reference_download_" + std::to_string(i % config.fileCount) + ".dat";
                             assert(validateFile(referenceFileName, outputFileName));
                             std::cout << "✓ Validation successful for " << outputFileName << std::endl;
                         }
@@ -235,7 +235,7 @@ public:
                 request.SetRange(ToAwsString(FormatRange(0, config.objectSize)));
                 
                 // Create a unique filename for this download
-                const std::string outputFileName = "/home/zilliz/gao/s3crt_download_" + std::to_string(i) + ".dat";
+                const std::string outputFileName = "/data/gaochao/s3crt_download_" + std::to_string(i) + ".dat";
                 // Set the response stream factory to a file stream.
                 request.SetResponseStreamFactory([=]() {
                     return Aws::New<DirectIOStream>("S3CrtDirectIOStream", outputFileName);
@@ -261,13 +261,13 @@ public:
                             long long contentLength = result.GetContentLength();
                             totalBytes += contentLength;
                                 
-                            std::cout << "✓ Request successful, write to file " << outputFileName
-                                        << " (" << contentLength << " bytes, " 
-                                        << latency.count() << "ms)" << std::endl;
+                            // std::cout << "✓ Request successful, write to file " << outputFileName
+                            //             << " (" << contentLength << " bytes, " 
+                            //             << latency.count() << "ms)" << std::endl;
 
                             if (config.validate_writes) {
                                 result.GetBody().flush();
-                                const std::string referenceFileName = "/home/zilliz/gao/s3_reference_download_" + std::to_string(i % config.fileCount) + ".dat";
+                                const std::string referenceFileName = "/data/gaochao/s3_reference_download_" + std::to_string(i % config.fileCount) + ".dat";
                                 assert(validateFile(referenceFileName, outputFileName));
                                 std::cout << "✓ Validation successful for " << outputFileName << std::endl;
                             }
@@ -467,7 +467,7 @@ void runPerformanceTests() {
         // bool validate_writes = false;
         // {"uat-test-bucket-temp-001", "test-small-object.dat", 1024 * 1024, 16, 24, 10, 8, "S3 vs S3CRT (1MB Objects)", true},
 
-        {"uat-test-bucket-temp-001", "test-medium-object.dat", 4 * 1024 * 1024 - 1000000, 16, 24, 10, 8, "S3 vs S3CRT (4MB Objects)", true},
+        {"uat-test-bucket-temp-001", "test-object-4.0mb.dat", 4 * 1024 * 1024, 16, 1000, 1000, 8, "S3 vs S3CRT (4MB Objects)", false},
 
     };
     
@@ -483,21 +483,21 @@ void runPerformanceTests() {
         if (config.validate_writes) {
             std::cout << "Downloading reference file..." << std::endl;
             for (int i = 0; i < config.fileCount; ++i) {
-                const std::string referenceFile = "/home/zilliz/gao/s3_reference_download_" + std::to_string(i) + ".dat";
+                const std::string referenceFile = "/data/gaochao/s3_reference_download_" + std::to_string(i) + ".dat";
                 assert(tester.downloadReferenceFile(config.bucketName, config.objectKeyPrefix + "_" + std::to_string(i), referenceFile, config.objectSize));
                 std::cout << "✓ Reference file downloaded successfully to " << referenceFile << std::endl;
             }
         }
         
         // Test S3Client
-        auto s3Metrics = tester.testS3ClientAsync(config);
-        printMetrics("S3Client", s3Metrics);
+        // auto s3Metrics = tester.testS3ClientAsync(config);
+        // printMetrics("S3Client", s3Metrics);
         
-        // Small delay between tests to ensure clean separation
-        std::cout << "\n...Pausing for 2 seconds before next test...\n" << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+        // // Small delay between tests to ensure clean separation
+        // std::cout << "\n...Pausing for 2 seconds before next test...\n" << std::endl;
+        // std::this_thread::sleep_for(std::chrono::seconds(2));
         
-        // Test S3CrtClient
+        // // Test S3CrtClient
         auto s3CrtMetrics = tester.testS3CrtClientAsync(config);
         printMetrics("S3CrtClient", s3CrtMetrics);
         

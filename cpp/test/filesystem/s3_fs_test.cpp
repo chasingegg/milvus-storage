@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <iostream>
 #include <aws/core/auth/AWSCredentialsProviderChain.h>
 #include "milvus-storage/filesystem/s3/s3_fs.h"
 #include "milvus-storage/filesystem/fs.h"

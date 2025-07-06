@@ -73,7 +73,7 @@ public:
         // Configure S3Client
         Aws::Client::ClientConfiguration clientConfig;
         clientConfig.region = "us-west-2";
-        clientConfig.executor = std::make_shared<Aws::Utils::Threading::PooledThreadExecutor>(config.concurrencyLevel * 2);
+        clientConfig.executor = std::make_shared<Aws::Utils::Threading::PooledThreadExecutor>(config.concurrencyLevel);
         
         Aws::S3::S3Client s3Client(clientConfig);
         
@@ -119,8 +119,8 @@ public:
                         totalBytes += bytes;
                         stream.seekg(0, std::ios::beg);
                         
-                        std::cout << "✓ Request completed successfully (" << bytes << " bytes, " 
-                                  << latency.count() << "ms)" << std::endl;
+                        // std::cout << "✓ Request completed successfully (" << bytes << " bytes, " 
+                                //   << latency.count() << "ms)" << std::endl;
                     } else {
                         failureCount++;
                         std::cout << "✗ Request failed: " << outcome.GetError().GetMessage() << std::endl;
@@ -198,8 +198,8 @@ public:
                         totalBytes += bytes;
                         stream.seekg(0, std::ios::beg);
                         
-                        std::cout << "✓ Request completed successfully (" << bytes << " bytes, " 
-                                  << latency.count() << "ms)" << std::endl;
+                        // std::cout << "✓ Request completed successfully (" << bytes << " bytes, " 
+                                //   << latency.count() << "ms)" << std::endl;
                     } else {
                         failureCount++;
                         std::cout << "✗ Request failed: " << outcome.GetError().GetMessage() << std::endl;
@@ -351,10 +351,10 @@ void runPerformanceTests() {
     // Test configurations for different scenarios
     std::vector<TestConfig> testConfigs = {
         // Small objects, low concurrency
-        // {"uat-test-bucket-temp-001", "test-small-object.dat", 1024 * 1024, 10, 200, 10, "Small Objects (1MB), Low Concurrency"},
+        {"uat-test-bucket-temp-001", "test-small-object.dat", 1024 * 1024, 16, 1000, 10, "Small Objects (1MB), Low Concurrency"},
         
         // // Medium objects, medium concurrency
-        {"uat-test-bucket-temp-001", "test-medium-object.dat", 4 * 1024 * 1024, 10, 20, 10, "Medium Objects (4MB), Medium Concurrency"},
+        {"uat-test-bucket-temp-001", "test-object-4.0mb.dat", 4 * 1024 * 1024, 16, 1000, 10, "Medium Objects (4MB), Medium Concurrency"},
         
         // // Large objects, high concurrency
         // {"your-test-bucket", "test-large-object.dat", 100 * 1024 * 1024, 10, 5, 10, "Large Objects (100MB), High Concurrency"},
