@@ -16,6 +16,7 @@ list(REMOVE_ITEM MILVUS_TEST_SOURCES "${PROJECT_SOURCE_DIR}/test/s3_test_file_st
 list(REMOVE_ITEM MILVUS_TEST_SOURCES "${PROJECT_SOURCE_DIR}/test/s3_test_memory_buffer.cpp")
 list(REMOVE_ITEM MILVUS_TEST_SOURCES "${PROJECT_SOURCE_DIR}/test/s3_test_memory_to_disk.cpp")
 list(REMOVE_ITEM MILVUS_TEST_SOURCES "${PROJECT_SOURCE_DIR}/test/s3_test_nullstream_vs_memory.cpp")
+list(REMOVE_ITEM MILVUS_TEST_SOURCES "${PROJECT_SOURCE_DIR}/test/s3_test.cpp")
 
 add_executable(milvus_test ${MILVUS_TEST_SOURCES})
 
