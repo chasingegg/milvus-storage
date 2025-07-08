@@ -19,6 +19,24 @@
 #include "boost/filesystem/path.hpp"
 #include <boost/filesystem/operations.hpp>
 
+#include <aws/core/Aws.h>
+#include <aws/core/auth/AWSCredentialsProviderChain.h>
+#include <aws/core/auth/AWSCredentials.h>
+#include <aws/core/client/ClientConfiguration.h>
+#include <aws/core/utils/threading/Executor.h>
+// #include <aws/core/utils/threading/PooledThreadExecutor.h>
+#include <aws/core/utils/memory/stl/AWSString.h>
+#include <aws/core/utils/logging/DefaultLogSystem.h>
+#include <aws/core/utils/logging/AWSLogging.h>
+
+#include <aws/s3/S3Client.h>
+#include <aws/s3/model/GetObjectRequest.h>
+#include <aws/s3/model/GetObjectResult.h>
+
+#include <aws/s3-crt/S3CrtClient.h>
+#include <aws/s3-crt/model/GetObjectRequest.h>
+#include <aws/s3-crt/model/GetObjectResult.h>
+
 #ifdef MILVUS_AZURE_FS
 #include "milvus-storage/filesystem/azure/azure_fs.h"
 #endif
@@ -69,5 +87,70 @@ Result<ArrowFileSystemPtr> ArrowFileSystemSingleton::createArrowFileSystem(const
     }
   }
 };
+
+std::shared_ptr<S3CrtClientWrapper> ArrowFileSystemSingleton::createCrtClient(const ArrowFileSystemConfig& config) {
+  
+  aws_options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info; // Reduced logging for less noise
+  aws_options_.loggingOptions.logger_create_fn = [] {
+      return std::make_shared<Aws::Utils::Logging::DefaultLogSystem>(
+          Aws::Utils::Logging::LogLevel::Info, "performance_test");
+  };
+  Aws::InitAPI(aws_options_);
+
+
+  Aws::S3Crt::ClientConfiguration client_config;
+  client_config.endpointOverride = ConvertToAwsString(config.address);
+
+  // Three cases:
+  // 1. no ssl, verifySSL=false
+  // 2. self-signed certificate, verifySSL=false
+  // 3. CA-signed certificate, verifySSL=true
+  if (config.useSSL) {
+      client_config.scheme = Aws::Http::Scheme::HTTPS;
+      client_config.verifySSL = true;
+      if (!config.sslCACert.empty()) {
+          client_config.caPath = ConvertToAwsString(config.sslCACert);
+          client_config.verifySSL = false;
+      }
+  } else {
+      client_config.scheme = Aws::Http::Scheme::HTTP;
+      client_config.verifySSL = false;
+  }
+
+  client_config.requestTimeoutMs = config.requestTimeoutMs == 0
+                                ? 10000
+                                : config.requestTimeoutMs;
+
+  if (!config.region.empty()) {
+      client_config.region = ConvertToAwsString(config.region);
+  }
+  client_config.throughputTargetGbps = 25;
+  client_config.maxConnections = 32;
+
+  if (config.useIAM) {
+      auto provider =
+          std::make_shared<Aws::Auth::DefaultAWSCredentialsProviderChain>();
+      auto aws_credentials = provider->GetAWSCredentials();
+      assert(!aws_credentials.GetAWSAccessKeyId().empty());
+      assert(!aws_credentials.GetAWSSecretKey().empty());
+      assert(!aws_credentials.GetSessionToken().empty());
+
+      auto s3_client = std::make_shared<Aws::S3Crt::S3CrtClient>(
+          provider,
+          client_config,
+          Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
+          config.useVirtualHost);
+      return std::make_shared<S3CrtClientWrapper>(std::move(s3_client));
+  } else {
+      auto s3_client = std::make_shared<Aws::S3Crt::S3CrtClient>(
+        Aws::Auth::AWSCredentials(
+            ConvertToAwsString(config.access_key_id),
+            ConvertToAwsString(config.access_key_value)),
+        client_config,
+        Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
+        config.useVirtualHost);
+      return std::make_shared<S3CrtClientWrapper>(std::move(s3_client));
+  }
+}
 
 };  // namespace milvus_storage
