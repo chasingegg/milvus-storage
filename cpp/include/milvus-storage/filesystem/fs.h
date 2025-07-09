@@ -262,7 +262,14 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     req.SetKey(ConvertToAwsString(key));
     auto outcome = s3_crt_client_->HeadObject(req);
     if (!outcome.IsSuccess()) {
-      throw std::runtime_error(outcome.GetError().GetMessage());
+      const auto& err = outcome.GetError();
+      std::stringstream ss;
+      ss << "FUCK GetObjectSize failed. "
+         << "Bucket: " << bucket << ", Key: " << key
+         << ", ErrorType: " << static_cast<int>(err.GetErrorType())
+         << ", ExceptionName: " << err.GetExceptionName()
+         << ", Message: " << err.GetMessage();
+      throw std::runtime_error(ss.str());
     }
     return outcome.GetResult().GetContentLength();
   }
