@@ -71,7 +71,7 @@ TencentCloudSTSCredentialsClient::GetAssumeRoleWithWebIdentityCredentials(
   std::shared_ptr<Aws::Http::HttpRequest> httpRequest(Aws::Http::CreateHttpRequest(
       m_endpoint, Aws::Http::HttpMethod::HTTP_POST, Aws::Utils::Stream::DefaultResponseStreamFactoryMethod));
 
-  httpRequest->SetUserAgent(Aws::Client::ComputeUserAgentString());
+  // httpRequest->SetUserAgent(Aws::Client::ComputeUserAgentString());
   httpRequest->SetHeaderValue("Authorization", "SKIP");
   httpRequest->SetHeaderValue("Host", "sts.tencentcloudapi.com");
   httpRequest->SetHeaderValue("X-TC-Action", "AssumeRoleWithWebIdentity");
