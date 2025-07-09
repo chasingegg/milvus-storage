@@ -90,10 +90,10 @@ Result<ArrowFileSystemPtr> ArrowFileSystemSingleton::createArrowFileSystem(const
 
 std::shared_ptr<S3CrtClientWrapper> ArrowFileSystemSingleton::createCrtClient(const ArrowFileSystemConfig& config) {
   
-  aws_options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info; // Reduced logging for less noise
+  aws_options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Trace; // Reduced logging for less noise
   aws_options_.loggingOptions.logger_create_fn = [] {
       return std::make_shared<Aws::Utils::Logging::DefaultLogSystem>(
-          Aws::Utils::Logging::LogLevel::Info, "performance_test");
+          Aws::Utils::Logging::LogLevel::Trace, "performance_test");
   };
   Aws::InitAPI(aws_options_);
 
