@@ -127,6 +127,9 @@ std::shared_ptr<S3CrtClientWrapper> ArrowFileSystemSingleton::createCrtClient(co
   client_config.throughputTargetGbps = 25;
   client_config.maxConnections = 32;
 
+  std::cout << "FUCK client_config.endpointOverride: " << client_config.endpointOverride.c_str() << std::endl;
+  std::cout << "FUCK client_config.region: " << client_config.region.c_str() << std::endl;
+
   if (config.useIAM) {
       auto provider =
           std::make_shared<Aws::Auth::DefaultAWSCredentialsProviderChain>();
