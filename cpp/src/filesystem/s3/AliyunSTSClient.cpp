@@ -106,7 +106,7 @@ AliyunSTSCredentialsClient::GetAssumeRoleWithWebIdentityCredentials(
   std::shared_ptr<Aws::Http::HttpRequest> httpRequest(Aws::Http::CreateHttpRequest(
       m_endpoint, Aws::Http::HttpMethod::HTTP_POST, Aws::Utils::Stream::DefaultResponseStreamFactoryMethod));
 
-  httpRequest->SetUserAgent(Aws::Client::ComputeUserAgentString());
+  // httpRequest->SetUserAgent(Aws::Client::ComputeUserAgentString());
 
   std::shared_ptr<Aws::IOStream> body = Aws::MakeShared<Aws::StringStream>("STS_RESOURCE_CLIENT_LOG_TAG");
   *body << ss.str();
