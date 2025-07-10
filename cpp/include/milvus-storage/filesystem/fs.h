@@ -279,8 +279,10 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
 
   size_t GetObjectRange(const std::string& bucket, const std::string& key, int64_t position, int64_t nbytes, void* out) {
     Aws::S3Crt::Model::GetObjectRequest req;
-    req.SetBucket(ConvertToAwsString(bucket));
-    req.SetKey(ConvertToAwsString(key));
+    std::string bucket_str = bucket;
+    std::string key_str = key;
+    req.SetBucket(ConvertToAwsString(bucket_str));
+    req.SetKey(ConvertToAwsString(key_str));
     req.SetRange(ConvertToAwsString(FormatRangeString(position, nbytes)));
     req.SetResponseStreamFactory(CrtAwsWriteableStreamFactory(out, nbytes));
 
