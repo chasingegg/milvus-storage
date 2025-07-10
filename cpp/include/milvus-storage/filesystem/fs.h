@@ -277,6 +277,9 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
   }
 
   size_t GetObjectRange(const std::string& bucket, const std::string& key, int64_t position, int64_t nbytes, void* out) {
+    if (nbytes == 0) {
+      return 0;
+    }
     Aws::S3Crt::Model::GetObjectRequest req;
     req.SetBucket(ConvertToAwsString(bucket));
     req.SetKey(ConvertToAwsString(key));
@@ -288,11 +291,7 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
       throw std::runtime_error(outcome.GetError().GetMessage());
     }
 
-    auto& stream = outcome.GetResult().GetBody();
-    stream.ignore(nbytes);
-    // NOTE: the stream is a stringstream by default, there is no actual error
-    // to check for.  However, stream.fail() may return true if EOF is reached.
-    return stream.gcount();
+    return outcome.GetResult().GetContentLength();
   }
 
   size_t GetObjectRangeToFile(const std::string& bucket, const std::string& key, int64_t position, int64_t nbytes, const std::string& local_filepath) {
