@@ -206,9 +206,11 @@ class FileSystemProducer {
   virtual Result<ArrowFileSystemPtr> Make() = 0;
 };
 
-inline Aws::String
-ConvertToAwsString(const std::string& str) {
-    return Aws::String(str.begin(), str.end());
+inline Aws::String ConvertToAwsString(const std::string& str) {
+  // Direct construction of Aws::String from std::string doesn't work because
+  // it uses a specific Allocator class.
+  std::cout << "FUCK ConvertToAwsString " << str << std::endl;
+  return Aws::String(str.begin(), str.end());
 }
 
 inline std::string FormatRangeString(int64_t start, int64_t length) {
