@@ -209,7 +209,6 @@ class FileSystemProducer {
 inline Aws::String ConvertToAwsString(const std::string& str) {
   // Direct construction of Aws::String from std::string doesn't work because
   // it uses a specific Allocator class.
-  std::cout << "FUCK ConvertToAwsString " << str << std::endl;
   return Aws::String(str.begin(), str.end());
 }
 
@@ -279,10 +278,8 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
 
   size_t GetObjectRange(const std::string& bucket, const std::string& key, int64_t position, int64_t nbytes, void* out) {
     Aws::S3Crt::Model::GetObjectRequest req;
-    std::string bucket_str = bucket;
-    std::string key_str = key;
-    req.SetBucket(ConvertToAwsString(bucket_str));
-    req.SetKey(ConvertToAwsString(key_str));
+    req.SetBucket(ConvertToAwsString(bucket));
+    req.SetKey(ConvertToAwsString(key));
     req.SetRange(ConvertToAwsString(FormatRangeString(position, nbytes)));
     req.SetResponseStreamFactory(CrtAwsWriteableStreamFactory(out, nbytes));
 
