@@ -36,6 +36,7 @@ class StorageConan(ConanFile):
         "aws-sdk-cpp:config": True,
         "aws-sdk-cpp:text-to-speech": False,
         "aws-sdk-cpp:transfer": False,
+        "aws-sdk-cpp:s3-crt": True,
         "arrow:with_s3": True,
         "arrow:with_azure": False,
         "arrow:filesystem_layer": True,
@@ -82,6 +83,7 @@ class StorageConan(ConanFile):
             self.options.rm_safe("fPIC")
 
     def requirements(self):
+        self.requires("aws-sdk-cpp/1.11.352@milvus/dev")
         self.requires("boost/1.82.0#744a17160ebb5838e9115eab4d6d0c06")
         self.requires("arrow/17.0.0#824f7efd0cdb69de97fe2ef43e93f838")
         self.requires("openssl/3.1.2#02594c4c0a6e2b4feb3cd15119993597")
