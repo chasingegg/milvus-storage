@@ -28,6 +28,7 @@
 #include "arrow/io/interfaces.h"
 #include "arrow/util/key_value_metadata.h"
 #include "arrow/filesystem/type_fwd.h"
+#include "milvus-storage/common/log.h"
 
 #include <chrono>
 #include <aws/core/Aws.h>
@@ -286,6 +287,23 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     return stream.gcount();
   }
 
+  size_t GetObjectRangeToFile(const std::string& bucket, const std::string& key, int64_t position, int64_t nbytes, const std::string& local_filepath) {
+    Aws::S3Crt::Model::GetObjectRequest req;
+    req.SetBucket(ConvertToAwsString(bucket));
+    req.SetKey(ConvertToAwsString(key));
+    req.SetRange(ConvertToAwsString(FormatRangeString(position, nbytes)));
+    req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
+      return Aws::New<Aws::FStream>("GetObjectStream",
+                                    local_filepath.c_str(),
+                                    std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+    }));
+    auto outcome = s3_crt_client_->GetObject(req);
+    if (!outcome.IsSuccess()) {
+      throw std::runtime_error(outcome.GetError().GetMessage());
+    }
+    return outcome.GetResult().GetContentLength();
+  }
+
   size_t ReadBatchToFile(const std::string& bucket, const std::string& key, const std::string& local_filepath_prefix,
       const std::vector<size_t>& offsets, const std::vector<size_t>& lengths, const std::vector<int64_t>& file_names,
       const std::function<void(int)>& mmap_func) {
@@ -319,13 +337,14 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
           
           auto end_time = std::chrono::high_resolution_clock::now();
           auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-          std::cout << "FUCK GetObjectAsync " << i << " took " << duration.count() << "ms" << std::endl;
+          LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " " << duration.count() << "ms";
 
           if (outcome.IsSuccess()) {
               mmap_func(i);
           } else {
               remove(local_filepath.c_str());
           }
+          LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " completed";
 
           if (++completed_requests == offsets.size()) {
               std::lock_guard<std::mutex> lock(cv_mutex);
@@ -368,7 +387,7 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
           
           auto end_time = std::chrono::high_resolution_clock::now();
           auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-          std::cout << "FUCK GetObjectAsync " << i << " took " << duration.count() << "ms" << std::endl;
+          LOG_STORAGE_INFO_ << "FUCK GetMemAsync " << i << " " << duration.count() << "ms";
 
           if (++completed_requests == offsets.size()) {
               std::lock_guard<std::mutex> lock(cv_mutex);
