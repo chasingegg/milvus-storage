@@ -10,10 +10,14 @@
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/GetObjectResult.h>
+#include <aws/s3/model/HeadObjectRequest.h>
+#include <aws/s3/model/HeadObjectResult.h>
 
 #include <aws/s3-crt/S3CrtClient.h>
 #include <aws/s3-crt/model/GetObjectRequest.h>
 #include <aws/s3-crt/model/GetObjectResult.h>
+#include <aws/s3-crt/model/HeadObjectRequest.h>
+#include <aws/s3-crt/model/HeadObjectResult.h>
 
 #include <chrono>
 #include <iostream>
@@ -225,6 +229,131 @@ public:
         return calculateMetrics(startTime, endTime, config);
     }
     
+    PerformanceMetrics testS3ClientHeadObjectAsync(const TestConfig& config) {
+        std::cout << "\n=== Testing S3Client HeadObject Async: " << config.testName << " ===" << std::endl;
+
+        // Configure S3Client
+        Aws::Client::ClientConfiguration clientConfig;
+        clientConfig.region = "us-east-1";
+        clientConfig.executor = std::make_shared<Aws::Utils::Threading::PooledThreadExecutor>(config.concurrencyLevel);
+        clientConfig.scheme = Aws::Http::Scheme::HTTP;
+        clientConfig.endpointOverride = "http://127.0.0.1:9000";
+        auto credentials = Aws::Auth::AWSCredentials("minioadmin", "minioadmin");
+        Aws::S3::S3Client s3Client(credentials, clientConfig, Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false);
+
+
+        resetCounters();
+        auto startTime = std::chrono::high_resolution_clock::now();
+        latencies.resize(config.requestCount);
+
+        // Launch async requests
+        for (int i = 0; i < config.requestCount; ++i) {
+            Aws::S3::Model::HeadObjectRequest request;
+            request.SetBucket(config.bucketName.c_str());
+            request.SetKey(config.objectKeyPrefix);
+            // request.SetKey(config.objectKeyPrefix + "_" + std::to_string(i % config.fileCount));
+
+            auto requestStartTime = std::chrono::high_resolution_clock::now();
+
+            s3Client.HeadObjectAsync(request,
+                [this, requestStartTime, config, i](const Aws::S3::S3Client* client,
+                                                const Aws::S3::Model::HeadObjectRequest& req,
+                                                const Aws::S3::Model::HeadObjectOutcome& outcome,
+                                                const std::shared_ptr<const Aws::Client::AsyncCallerContext>& context) {
+                    
+                    auto requestEndTime = std::chrono::high_resolution_clock::now();
+                    auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        requestEndTime - requestStartTime);
+
+                    latencies[i] = latency;
+
+                    if (outcome.IsSuccess()) {
+                        successCount++;
+                        totalBytes += outcome.GetResult().GetContentLength();
+                    } else {
+                        failureCount++;
+                        std::cout << "✗ Request failed: " << outcome.GetError().GetMessage() << std::endl;
+                    }
+
+                    int completed = ++completedRequests;
+                    if (completed >= config.requestCount) {
+                        std::lock_guard<std::mutex> lock(completionMutex);
+                        completionCV.notify_one();
+                    }
+                });
+        }
+
+        // Wait for completion
+        std::unique_lock<std::mutex> lock(completionMutex);
+        completionCV.wait(lock, [&] { return completedRequests >= config.requestCount; });
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+
+        return calculateMetrics(startTime, endTime, config);
+    }
+
+    PerformanceMetrics testS3CrtClientHeadObjectAsync(const TestConfig& config) {
+        std::cout << "\n=== Testing S3CrtClient HeadObject Async: " << config.testName << " ===" << std::endl;
+        
+        // Configure S3CrtClient
+        Aws::S3Crt::ClientConfiguration clientConfig;
+        clientConfig.region = "us-east-1";
+        clientConfig.throughputTargetGbps = 20.0; // Set high throughput target
+        clientConfig.scheme = Aws::Http::Scheme::HTTP;
+        clientConfig.endpointOverride = "http://127.0.0.1:9000";
+
+        auto credentials = Aws::Auth::AWSCredentials("minioadmin", "minioadmin");
+        Aws::S3Crt::S3CrtClient s3CrtClient(credentials, clientConfig, Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false);
+        
+        resetCounters();
+        auto startTime = std::chrono::high_resolution_clock::now();
+        latencies.resize(config.requestCount);
+        
+        // Launch async requests
+        for (int i = 0; i < config.requestCount; ++i) {
+            Aws::S3Crt::Model::HeadObjectRequest request;
+            request.SetBucket(config.bucketName.c_str());
+            request.SetKey(config.objectKeyPrefix);
+            // request.SetKey(config.objectKeyPrefix + "_" + std::to_string(i % config.fileCount));
+            
+            auto requestStartTime = std::chrono::high_resolution_clock::now();
+            
+            s3CrtClient.HeadObjectAsync(request,
+                [this, requestStartTime, config, i](const Aws::S3Crt::S3CrtClient* client,
+                                                const Aws::S3Crt::Model::HeadObjectRequest& req,
+                                                const Aws::S3Crt::Model::HeadObjectOutcome& outcome,
+                                                const std::shared_ptr<const Aws::Client::AsyncCallerContext>& context) {
+                    
+                    auto requestEndTime = std::chrono::high_resolution_clock::now();
+                    auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        requestEndTime - requestStartTime);
+                    
+                    latencies[i] = latency;
+                    
+                    if (outcome.IsSuccess()) {
+                        successCount++;
+                        totalBytes += outcome.GetResult().GetContentLength();
+                    } else {
+                        failureCount++;
+                        std::cout << "✗ Request failed: " << outcome.GetError().GetMessage() << std::endl;
+                    }
+                    
+                    int completed = ++completedRequests;
+                    if (completed >= config.requestCount) {
+                        std::lock_guard<std::mutex> lock(completionMutex);
+                        completionCV.notify_one();
+                    }
+                });
+        }
+        
+        // Wait for completion
+        std::unique_lock<std::mutex> lock(completionMutex);
+        completionCV.wait(lock, [&] { return completedRequests >= config.requestCount; });
+        
+        auto endTime = std::chrono::high_resolution_clock::now();
+        
+        return calculateMetrics(startTime, endTime, config);
+    }
 private:
     void resetCounters() {
         completedRequests = 0;
@@ -351,10 +480,10 @@ void runPerformanceTests() {
     // Test configurations for different scenarios
     std::vector<TestConfig> testConfigs = {
         // Small objects, low concurrency
-        {"uat-test-bucket-temp-001", "test-small-object.dat", 1024 * 1024, 16, 1000, 10, "Small Objects (1MB), Low Concurrency"},
+        {"a-bucket", "files/index_files/459290575288344123/1/459290575288139881/459290575288343516/_mem.index.bin", 1024 * 1024, 16, 1, 10, "Small Objects (1MB), Low Concurrency"},
         
         // // Medium objects, medium concurrency
-        {"uat-test-bucket-temp-001", "test-object-4.0mb.dat", 4 * 1024 * 1024, 16, 1000, 10, "Medium Objects (4MB), Medium Concurrency"},
+        // {"uat-test-bucket-temp-001", "test-object-4.0mb.dat", 4 * 1024 * 1024, 16, 1000, 10, "Medium Objects (4MB), Medium Concurrency"},
         
         // // Large objects, high concurrency
         // {"your-test-bucket", "test-large-object.dat", 100 * 1024 * 1024, 10, 5, 10, "Large Objects (100MB), High Concurrency"},
@@ -368,15 +497,27 @@ void runPerformanceTests() {
         std::cout << std::string(80, '#') << std::endl;
         
         // Test S3Client
-        auto s3Metrics = tester.testS3ClientAsync(config);
-        printMetrics("S3Client", s3Metrics);
+        // auto s3Metrics = tester.testS3ClientAsync(config);
+        // printMetrics("S3Client GetObject", s3Metrics);
         
         // Small delay between tests
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+        // std::this_thread::sleep_for(std::chrono::seconds(2));
         
         // Test S3CrtClient
-        auto s3CrtMetrics = tester.testS3CrtClientAsync(config);
-        printMetrics("S3CrtClient", s3CrtMetrics);
+        // auto s3CrtMetrics = tester.testS3CrtClientAsync(config);
+        // printMetrics("S3CrtClient GetObject", s3CrtMetrics);
+        
+        // Small delay between tests
+        // std::this_thread::sleep_for(std::chrono::seconds(2));
+
+        auto s3HeadMetrics = tester.testS3ClientHeadObjectAsync(config);
+        printMetrics("S3Client HeadObject", s3HeadMetrics);
+        
+        // Small delay between tests
+        // std::this_thread::sleep_for(std::chrono::seconds(2));
+
+        auto s3CrtHeadMetrics = tester.testS3CrtClientHeadObjectAsync(config);
+        printMetrics("S3CrtClient HeadObject", s3CrtHeadMetrics);
         
         // // Compare results
         // compareMetrics(s3Metrics, s3CrtMetrics);

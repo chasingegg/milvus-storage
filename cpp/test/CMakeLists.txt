@@ -34,11 +34,11 @@ include(GoogleTest)
 gtest_discover_tests(milvus_test)
 
 # Create separate executable for s3_test.cpp
-# add_executable(s3_test ${PROJECT_SOURCE_DIR}/test/s3_test.cpp)
-# target_link_libraries(s3_test PRIVATE AWS::aws-sdk-cpp-identity-management AWS::aws-sdk-cpp-s3 AWS::aws-sdk-cpp-s3-crt)
-# set_target_properties(s3_test PROPERTIES
-#   CXX_STANDARD 17
-# )
+add_executable(s3_test ${PROJECT_SOURCE_DIR}/test/s3_test.cpp)
+target_link_libraries(s3_test PRIVATE AWS::aws-sdk-cpp-identity-management AWS::aws-sdk-cpp-s3 AWS::aws-sdk-cpp-s3-crt)
+set_target_properties(s3_test PROPERTIES
+  CXX_STANDARD 17
+)
 
 # add_executable(s3_test_memory_buffer ${PROJECT_SOURCE_DIR}/test/s3_test_memory_buffer.cpp)
 # target_link_libraries(s3_test_memory_buffer PRIVATE AWS::aws-sdk-cpp-identity-management AWS::aws-sdk-cpp-s3 AWS::aws-sdk-cpp-s3-crt)
