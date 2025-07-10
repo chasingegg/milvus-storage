@@ -208,7 +208,7 @@ class FileSystemProducer {
 
 inline Aws::String
 ConvertToAwsString(const std::string& str) {
-    return Aws::String(str.c_str(), str.size());
+    return Aws::String(str.begin(), str.end());
 }
 
 inline std::string FormatRangeString(int64_t start, int64_t length) {
