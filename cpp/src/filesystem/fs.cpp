@@ -108,10 +108,10 @@ std::shared_ptr<S3CrtClientWrapper> ArrowFileSystemSingleton::createCrtClient(co
   if (config.useSSL) {
       client_config.scheme = Aws::Http::Scheme::HTTPS;
       client_config.verifySSL = true;
-      if (!config.sslCACert.empty()) {
-          client_config.caPath = ConvertToAwsString(config.sslCACert);
-          client_config.verifySSL = false;
-      }
+      // if (!config.sslCACert.empty()) {
+      //     client_config.caPath = ConvertToAwsString(config.sslCACert);
+      //     client_config.verifySSL = false;
+      // }
   } else {
       client_config.scheme = Aws::Http::Scheme::HTTP;
       client_config.verifySSL = false;
