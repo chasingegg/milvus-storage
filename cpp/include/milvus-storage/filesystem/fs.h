@@ -288,6 +288,11 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
 
     auto outcome = s3_crt_client_->GetObject(req);
     if (!outcome.IsSuccess()) {
+      LOG_STORAGE_INFO_ << FormatRangeString(position, nbytes) << " " << bucket << " " << key << " " << nbytes << "GetObjectRange failed. "
+         << "Bucket: " << bucket << ", Key: " << key
+         << ", ErrorType: " << static_cast<int>(outcome.GetError().GetErrorType())
+         << ", ExceptionName: " << outcome.GetError().GetExceptionName()
+         << ", Message: " << outcome.GetError().GetMessage();
       throw std::runtime_error(outcome.GetError().GetMessage());
     }
 
