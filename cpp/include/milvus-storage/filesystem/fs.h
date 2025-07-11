@@ -283,12 +283,14 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     Aws::S3Crt::Model::GetObjectRequest req;
     req.SetBucket(ConvertToAwsString(bucket));
     req.SetKey(ConvertToAwsString(key));
-    req.SetRange(ConvertToAwsString(FormatRangeString(position, nbytes)));
+    // req.SetRange(ConvertToAwsString(FormatRangeString(position, nbytes)));
+    LOG_STORAGE_INFO_ << "FUCK " << FormatRangeString(position, nbytes);
+    req.SetRange(FormatRangeString(position, nbytes));
     req.SetResponseStreamFactory(CrtAwsWriteableStreamFactory(out, nbytes));
 
     auto outcome = s3_crt_client_->GetObject(req);
     if (!outcome.IsSuccess()) {
-      LOG_STORAGE_INFO_ << FormatRangeString(position, nbytes) << " " << bucket << " " << key << " " << nbytes << "GetObjectRange failed. "
+      LOG_STORAGE_INFO_ << "FUCK " << FormatRangeString(position, nbytes) << " " << bucket << " " << key << " " << nbytes << "GetObjectRange failed. "
          << "Bucket: " << bucket << ", Key: " << key
          << ", ErrorType: " << static_cast<int>(outcome.GetError().GetErrorType())
          << ", ExceptionName: " << outcome.GetError().GetExceptionName()
