@@ -502,7 +502,7 @@ mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
 
           if (outcome.IsSuccess()) {
             outcome.GetResult().GetBody().flush();
-            mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex, content_length]() {
+            mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
               mmap_func(i);
               if (++completed_requests == offsets.size()) {
                   std::lock_guard<std::mutex> lock(cv_mutex);
