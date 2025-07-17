@@ -52,6 +52,20 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
+#include <thread>
+#include <fstream>
+#include <memory>
+#include <iomanip>
+#include <future>
+#include <sstream>
+#include <string>
+
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
 #include "milvus-storage/common/result.h"
 #include "milvus-storage/common/config.h"
 #include <aws/s3-crt/S3CrtClient.h>
@@ -80,87 +94,211 @@ using ::arrow::fs::internal::RemoveTrailingSlash;
 
 namespace milvus_storage {
 
-// MappedFile struct and mmap_file function
-struct MappedFile {
-    void* data = nullptr;
-    size_t size = 0;
-    int fd = -1;
-    std::string path;
-
-    ~MappedFile() {
-        if (data != nullptr && data != MAP_FAILED) {
-            munmap(data, size);
+  class DirectIOStreambuf : public std::streambuf {
+public:
+    explicit DirectIOStreambuf(const std::string& filename, size_t buffer_size = 4096 * 16)
+        : d_filename(filename),
+          d_fd(-1),
+          d_buffer_size(buffer_size),
+          d_buffer(nullptr),
+          d_total_bytes_written(0) {
+        
+        if (d_buffer_size % d_alignment != 0) {
+            d_buffer_size = ((d_buffer_size / d_alignment) + 1) * d_alignment;
         }
-        if (fd != -1) {
-            close(fd);
+
+        d_fd = open(d_filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, 0666);
+        if (d_fd == -1) {
+            perror("DirectIOStreambuf: Failed to open file with O_DIRECT");
+            throw std::runtime_error("Failed to open file with O_DIRECT for " + d_filename);
+        }
+
+        if (posix_memalign(reinterpret_cast<void**>(&d_buffer), d_alignment, d_buffer_size) != 0) {
+            close(d_fd);
+            throw std::runtime_error("Failed to allocate aligned memory for DirectIOStreambuf");
+        }
+
+        setp(d_buffer, d_buffer + d_buffer_size);
+    }
+
+    ~DirectIOStreambuf() override {
+        sync();
+        if (d_fd != -1) {
+            close(d_fd);
+            d_fd = -1;
+        }
+        if (d_buffer) {
+            free(d_buffer);
+            d_buffer = nullptr;
         }
     }
 
-    MappedFile(MappedFile&& other) noexcept 
-        : data(other.data), size(other.size), fd(other.fd), path(std::move(other.path)) {
-        other.data = nullptr;
-        other.fd = -1;
-    }
-    MappedFile& operator=(MappedFile&& other) noexcept {
-        if (this != &other) {
-            if (data != nullptr && data != MAP_FAILED) munmap(data, size);
-            if (fd != -1) close(fd);
-            data = other.data;
-            size = other.size;
-            fd = other.fd;
-            path = std::move(other.path);
-            other.data = nullptr;
-            other.fd = -1;
+protected:
+    int_type overflow(int_type ch = traits_type::eof()) override {
+        if (d_fd == -1) {
+            return traits_type::eof();
         }
-        return *this;
+
+        if (!flush_aligned_blocks()) {
+            return traits_type::eof();
+        }
+
+        if (ch != traits_type::eof()) {
+            if (pptr() < epptr()) {
+                *pptr() = static_cast<char>(ch);
+                pbump(1);
+            } else {
+                return traits_type::eof();
+            }
+        }
+
+        return traits_type::not_eof(ch);
     }
 
-    MappedFile() = default;
-    MappedFile(const MappedFile&) = delete;
-    MappedFile& operator=(const MappedFile&) = delete;
+    int sync() override {
+        if (d_fd == -1) return -1;
+        
+        if (!flush_aligned_blocks()) return -1;
+
+        size_t remainder_size = pptr() - pbase();
+        if (remainder_size > 0) {
+            size_t padded_size = ((remainder_size + d_alignment - 1) / d_alignment) * d_alignment;
+
+            memset(pbase() + remainder_size, 0, padded_size - remainder_size);
+
+            ssize_t written = write(d_fd, pbase(), padded_size);
+            if (written == -1 || static_cast<size_t>(written) != padded_size) {
+                perror("DirectIOStreambuf: Final padded write failed");
+                // Continue to attempt truncation
+            }
+
+            d_total_bytes_written += remainder_size;
+            
+            // Clear the buffer since it has been flushed
+            setp(pbase(), epptr());
+
+            if (ftruncate(d_fd, d_total_bytes_written) != 0) {
+                perror("DirectIOStreambuf: ftruncate failed");
+                return -1;
+            }
+        }
+        
+        return 0;
+    }
+
+private:
+    bool flush_aligned_blocks() {
+        size_t current_size = pptr() - pbase();
+        if (current_size == 0 || d_fd == -1) {
+            return true;
+        }
+        
+        size_t write_size = (current_size / d_alignment) * d_alignment;
+        if (write_size > 0) {
+            ssize_t written = write(d_fd, pbase(), write_size);
+            if (written == -1) {
+                perror("DirectIOStreambuf: write failed");
+                return false;
+            }
+            if (static_cast<size_t>(written) != write_size) {
+                return false; // Short write is an error
+            }
+            
+            d_total_bytes_written += written;
+            size_t remaining_size = current_size - written;
+            memmove(pbase(), pbase() + written, remaining_size);
+            setp(pbase(), epptr());
+            pbump(static_cast<int>(remaining_size));
+        }
+        return true;
+    }
+
+    std::string d_filename;
+    int         d_fd;
+    size_t      d_total_bytes_written;
+
+    const size_t      d_alignment = 4096;
+    size_t            d_buffer_size;
+    char*             d_buffer;
 };
 
-inline MappedFile mmap_file(const char* filepath, size_t expected_size = 0) {
-    MappedFile mapped_file;
-    mapped_file.path = filepath;
-    mapped_file.fd = open(filepath, O_RDONLY);
-    if (mapped_file.fd == -1) {
-        perror("open");
-        return mapped_file;
-    }
+/**
+ * A simple Aws::IOStream wrapper around the DirectIOStreambuf.
+ */
+class DirectIOStream : public Aws::IOStream {
+public:
+    explicit DirectIOStream(const std::string& filename)
+        : Aws::IOStream(&streambuf), streambuf(filename) {}
+private:
+    DirectIOStreambuf streambuf;
+};
 
-    struct stat sb;
-    if (fstat(mapped_file.fd, &sb) == -1) {
-        perror("fstat");
-        close(mapped_file.fd);
-        mapped_file.fd = -1;
-        return mapped_file;
-    }
-    mapped_file.size = sb.st_size;
 
-    if (expected_size > 0 && mapped_file.size != expected_size) {
-        fprintf(stderr, "mmap_file error: file size %zu does not match expected size %zu for file %s\n", mapped_file.size, expected_size, filepath);
-        close(mapped_file.fd);
-        mapped_file.fd = -1;
-        return mapped_file;
-    }
-
-    if (mapped_file.size == 0) { // Can't mmap empty file
-        close(mapped_file.fd);
-        mapped_file.fd = -1;
-        mapped_file.data = nullptr; 
-        return mapped_file;
-    }
-
-    mapped_file.data = mmap(NULL, mapped_file.size, PROT_READ, MAP_PRIVATE, mapped_file.fd, 0);
-    if (mapped_file.data == MAP_FAILED) {
-        perror("mmap");
-        close(mapped_file.fd);
-        mapped_file.fd = -1;
-        return mapped_file;
-    }
+class ThreadPool {
+public:
+    ThreadPool(size_t);
+    template<class F, class... Args>
+    auto enqueue(F&& f, Args&&... args) 
+        -> std::future<typename std::result_of<F(Args...)>::type>;
+    ~ThreadPool();
+private:
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
     
-    return mapped_file;
+    std::mutex queue_mutex;
+    std::condition_variable condition;
+    bool stop;
+};
+
+// the constructor just launches some amount of workers
+inline ThreadPool::ThreadPool(size_t threads)
+    :   stop(false)
+{
+    for(size_t i = 0; i<threads; ++i)
+        workers.emplace_back(
+            [this]
+            {
+                for(;;)
+                {
+                    std::function<void()> task;
+                    {
+                        std::unique_lock<std::mutex> lock(this->queue_mutex);
+                        this->condition.wait(lock, [this]{ return this->stop || !this->tasks.empty(); });
+                        if(this->stop && this->tasks.empty())
+                            return;
+                        task = std::move(this->tasks.front());
+                        this->tasks.pop();
+                    }
+                    task();
+                }
+            }
+        );
+}
+
+// add new work item to the pool
+template<class F, class... Args>
+auto ThreadPool::enqueue(F&& f, Args&&... args) -> std::future<typename std::result_of<F(Args...)>::type> {
+    using return_type = typename std::result_of<F(Args...)>::type;
+    auto task = std::make_shared< std::packaged_task<return_type()> >(std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+    std::future<return_type> res = task->get_future();
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        if(stop) throw std::runtime_error("enqueue on stopped ThreadPool");
+        tasks.emplace([task](){ (*task)(); });
+    }
+    condition.notify_one();
+    return res;
+}
+
+// the destructor joins all threads
+inline ThreadPool::~ThreadPool() {
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        stop = true;
+    }
+    condition.notify_all();
+    for(std::thread &worker: workers)
+        worker.join();
 }
 
 using ArrowFileSystemPtr = std::shared_ptr<arrow::fs::FileSystem>;
@@ -255,7 +393,9 @@ inline S3Path FromString(const std::string& s) {
 class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
   public:
   S3CrtClientWrapper(std::shared_ptr<Aws::S3Crt::S3CrtClient> client)
-      : s3_crt_client_(std::move(client)) {}
+      : s3_crt_client_(std::move(client)) {
+mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
+      }
 
 
   size_t GetObjectSize(const std::string& bucket, const std::string& key) {
@@ -306,11 +446,14 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     req.SetBucket(ConvertToAwsString(bucket));
     req.SetKey(ConvertToAwsString(key));
     req.SetRange(ConvertToAwsString(FormatRangeString(position, nbytes)));
-    req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
-      return Aws::New<Aws::FStream>("GetObjectStream",
-                                    local_filepath.c_str(),
-                                    std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-    }));
+    req.SetResponseStreamFactory([=]() {
+      return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
+    });
+    // req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
+    //   return Aws::New<Aws::FStream>("GetObjectStream",
+    //                                 local_filepath.c_str(),
+    //                                 std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+    // }));
     auto outcome = s3_crt_client_->GetObject(req);
     if (!outcome.IsSuccess()) {
       throw std::runtime_error(outcome.GetError().GetMessage());
@@ -335,11 +478,14 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
       req.SetBucket(ConvertToAwsString(bucket));
       req.SetKey(ConvertToAwsString(key));
       req.SetRange(ConvertToAwsString(FormatRangeString(start, length)));
-      req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
-        return Aws::New<Aws::FStream>("GetObjectStream",
-                                      local_filepath.c_str(),
-                                      std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-      }));
+      req.SetResponseStreamFactory([=]() {
+        return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
+      });
+      // req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
+      //   return Aws::New<Aws::FStream>("GetObjectStream",
+      //                                 local_filepath.c_str(),
+      //                                 std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+      // }));
 
       auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -354,16 +500,22 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
           LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " " << duration.count() << "ms";
 
           if (outcome.IsSuccess()) {
+            mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
               mmap_func(i);
+              if (++completed_requests == offsets.size()) {
+                  std::lock_guard<std::mutex> lock(cv_mutex);
+                  cv.notify_one();
+              }
+            });
           } else {
+              LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " failed";
               remove(local_filepath.c_str());
+              if (++completed_requests == offsets.size()) {
+                  std::lock_guard<std::mutex> lock(cv_mutex);
+                  cv.notify_one();
+              }
           }
           LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " completed";
-
-          if (++completed_requests == offsets.size()) {
-              std::lock_guard<std::mutex> lock(cv_mutex);
-              cv.notify_one();
-          }
       });
     }
 
@@ -418,6 +570,7 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
 
   private:
     std::shared_ptr<Aws::S3Crt::S3CrtClient> s3_crt_client_ = nullptr;
+    std::shared_ptr<ThreadPool> mmap_thread_pool_ = nullptr;
 };
 
 class ArrowFileSystemSingleton {
