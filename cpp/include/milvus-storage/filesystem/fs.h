@@ -458,6 +458,7 @@ mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
     if (!outcome.IsSuccess()) {
       throw std::runtime_error(outcome.GetError().GetMessage());
     }
+    outcome.GetResult().GetBody().flush();
     return outcome.GetResult().GetContentLength();
   }
 
@@ -500,7 +501,8 @@ mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
           LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " " << duration.count() << "ms";
 
           if (outcome.IsSuccess()) {
-            mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
+            outcome.GetResult().GetBody().flush();
+            mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex, content_length]() {
               mmap_func(i);
               if (++completed_requests == offsets.size()) {
                   std::lock_guard<std::mutex> lock(cv_mutex);
