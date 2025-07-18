@@ -446,14 +446,14 @@ mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
     req.SetBucket(ConvertToAwsString(bucket));
     req.SetKey(ConvertToAwsString(key));
     req.SetRange(ConvertToAwsString(FormatRangeString(position, nbytes)));
-    req.SetResponseStreamFactory([=]() {
-      return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
-    });
-    // req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
-    //   return Aws::New<Aws::FStream>("GetObjectStream",
-    //                                 local_filepath.c_str(),
-    //                                 std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-    // }));
+    // req.SetResponseStreamFactory([=]() {
+    //   return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
+    // });
+    req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
+      return Aws::New<Aws::FStream>("GetObjectStream",
+                                    local_filepath.c_str(),
+                                    std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+    }));
     auto outcome = s3_crt_client_->GetObject(req);
     if (!outcome.IsSuccess()) {
       throw std::runtime_error(outcome.GetError().GetMessage());
@@ -479,14 +479,14 @@ mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
       req.SetBucket(ConvertToAwsString(bucket));
       req.SetKey(ConvertToAwsString(key));
       req.SetRange(ConvertToAwsString(FormatRangeString(start, length)));
-      req.SetResponseStreamFactory([=]() {
-        return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
-      });
-      // req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
-      //   return Aws::New<Aws::FStream>("GetObjectStream",
-      //                                 local_filepath.c_str(),
-      //                                 std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-      // }));
+      // req.SetResponseStreamFactory([=]() {
+        // return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
+      // });
+      req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
+        return Aws::New<Aws::FStream>("GetObjectStream",
+                                      local_filepath.c_str(),
+                                      std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+      }));
 
       auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -502,13 +502,13 @@ mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
 
           if (outcome.IsSuccess()) {
             outcome.GetResult().GetBody().flush();
-            mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
+            // mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
               mmap_func(i);
               if (++completed_requests == offsets.size()) {
                   std::lock_guard<std::mutex> lock(cv_mutex);
                   cv.notify_one();
               }
-            });
+            // });
           } else {
               LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " failed";
               remove(local_filepath.c_str());
