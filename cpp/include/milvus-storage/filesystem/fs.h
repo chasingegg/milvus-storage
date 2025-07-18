@@ -474,6 +474,7 @@ mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
       size_t start = offsets[i];
       size_t length = lengths[i];
       std::string local_filepath = local_filepath_prefix + "_" + std::to_string(file_names[i]);
+      LOG_STORAGE_INFO_ << "FUCK storage " << local_filepath;
 
       Aws::S3Crt::Model::GetObjectRequest req;
       req.SetBucket(ConvertToAwsString(bucket));
