@@ -474,7 +474,6 @@ mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
       size_t start = offsets[i];
       size_t length = lengths[i];
       std::string local_filepath = local_filepath_prefix + "_" + std::to_string(file_names[i]);
-      LOG_STORAGE_INFO_ << "FUCK storage " << local_filepath;
 
       Aws::S3Crt::Model::GetObjectRequest req;
       req.SetBucket(ConvertToAwsString(bucket));
@@ -503,13 +502,13 @@ mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
 
           if (outcome.IsSuccess()) {
             outcome.GetResult().GetBody().flush();
-            // mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
+            mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
               mmap_func(i);
               if (++completed_requests == offsets.size()) {
                   std::lock_guard<std::mutex> lock(cv_mutex);
                   cv.notify_one();
               }
-            // });
+            });
           } else {
               LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " failed";
               remove(local_filepath.c_str());
