@@ -394,8 +394,8 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
   public:
   S3CrtClientWrapper(std::shared_ptr<Aws::S3Crt::S3CrtClient> client)
       : s3_crt_client_(std::move(client)) {
-mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
-      }
+      mmap_thread_pool_ = std::make_shared<ThreadPool>(8);
+  }
 
 
   size_t GetObjectSize(const std::string& bucket, const std::string& key) {
@@ -585,15 +585,15 @@ class ArrowFileSystemSingleton {
 
   ~ArrowFileSystemSingleton() {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (afs_ != nullptr) {
-      afs_.reset();
-    }
     if (!is_finalized_) {
       if (s3_crt_client_ != nullptr) {
         s3_crt_client_.reset();
         Aws::ShutdownAPI(aws_options_);
       }
       is_finalized_ = true;
+    }
+    if (afs_ != nullptr) {
+      afs_.reset();
     }
   }
 
@@ -604,28 +604,28 @@ class ArrowFileSystemSingleton {
 
   void Init(const ArrowFileSystemConfig& config) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (afs_ == nullptr) {
-      afs_ = createArrowFileSystem(config).value();
-    }
     if (!is_initialized_) {
       if (s3_crt_client_ == nullptr) {
         s3_crt_client_ = createCrtClient(config);
       }
       is_initialized_ = true;
     }
+    if (afs_ == nullptr) {
+      afs_ = createArrowFileSystem(config).value();
+    }
   }
 
   void Release() {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (afs_ != nullptr) {
-      afs_.reset();
-    }
     if (!is_finalized_) {
       if (s3_crt_client_ != nullptr) {
         s3_crt_client_.reset();
         Aws::ShutdownAPI(aws_options_);
       }
       is_finalized_ = true;
+    }
+    if (afs_ != nullptr) {
+      afs_.reset();
     }
   }
 

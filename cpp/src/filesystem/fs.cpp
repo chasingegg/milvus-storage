@@ -90,11 +90,21 @@ Result<ArrowFileSystemPtr> ArrowFileSystemSingleton::createArrowFileSystem(const
 
 std::shared_ptr<S3CrtClientWrapper> ArrowFileSystemSingleton::createCrtClient(const ArrowFileSystemConfig& config) {
   
-  aws_options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info; // Reduced logging for less noise
+  aws_options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Fatal; // Reduced logging for less noise
   aws_options_.loggingOptions.logger_create_fn = [] {
       return std::make_shared<Aws::Utils::Logging::DefaultLogSystem>(
-          Aws::Utils::Logging::LogLevel::Info, "performance_test");
+          Aws::Utils::Logging::LogLevel::Fatal, "performance_test");
   };
+    aws_options_.ioOptions.clientBootstrap_create_fn =
+        []() {
+          Aws::Crt::Io::EventLoopGroup event_loop_group(2);
+          Aws::Crt::Io::DefaultHostResolver default_host_resolver(
+              event_loop_group, /*maxHosts=*/8, /*maxTTL=*/30);
+          auto client_bootstrap = Aws::MakeShared<Aws::Crt::Io::ClientBootstrap>(
+              "Aws_Init_Cleanup", event_loop_group, default_host_resolver);
+          client_bootstrap->EnableBlockingShutdown();
+          return client_bootstrap;
+        };
   Aws::InitAPI(aws_options_);
 
 
