@@ -446,14 +446,14 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     req.SetBucket(ConvertToAwsString(bucket));
     req.SetKey(ConvertToAwsString(key));
     req.SetRange(ConvertToAwsString(FormatRangeString(position, nbytes)));
-    req.SetResponseStreamFactory([=]() {
-      return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
-    });
-    // req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
-    //   return Aws::New<Aws::FStream>("GetObjectStream",
-    //                                 local_filepath.c_str(),
-    //                                 std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-    // }));
+    // req.SetResponseStreamFactory([=]() {
+    //   return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
+    // });
+    req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
+      return Aws::New<Aws::FStream>("GetObjectStream",
+                                    local_filepath.c_str(),
+                                    std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+    }));
     auto outcome = s3_crt_client_->GetObject(req);
     if (!outcome.IsSuccess()) {
       throw std::runtime_error(outcome.GetError().GetMessage());
@@ -479,14 +479,14 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
       req.SetBucket(ConvertToAwsString(bucket));
       req.SetKey(ConvertToAwsString(key));
       req.SetRange(ConvertToAwsString(FormatRangeString(start, length)));
-      req.SetResponseStreamFactory([=]() {
-        return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
-      });
-      // req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
-      //   return Aws::New<Aws::FStream>("GetObjectStream",
-      //                                 local_filepath.c_str(),
-      //                                 std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-      // }));
+      // req.SetResponseStreamFactory([=]() {
+      //   return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
+      // });
+      req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
+        return Aws::New<Aws::FStream>("GetObjectStream",
+                                      local_filepath.c_str(),
+                                      std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+      }));
 
       auto start_time = std::chrono::high_resolution_clock::now();
 
