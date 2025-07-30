@@ -502,13 +502,13 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
 
           if (outcome.IsSuccess()) {
             outcome.GetResult().GetBody().flush();
-            mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
+            // mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
               mmap_func(i);
               if (++completed_requests == offsets.size()) {
                   std::lock_guard<std::mutex> lock(cv_mutex);
                   cv.notify_one();
               }
-            });
+            // });
           } else {
               LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " failed";
               remove(local_filepath.c_str());
