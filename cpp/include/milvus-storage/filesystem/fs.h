@@ -471,7 +471,7 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     std::condition_variable cv;
 
     {
-      std::unique_lock<std::mutex> lock(mu_);
+      // std::unique_lock<std::mutex> lock(mu_);
 
       auto start_time = std::chrono::high_resolution_clock::now();
       
