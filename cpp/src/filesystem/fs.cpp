@@ -97,7 +97,7 @@ std::shared_ptr<S3CrtClientWrapper> ArrowFileSystemSingleton::createCrtClient(co
   };
     aws_options_.ioOptions.clientBootstrap_create_fn =
         []() {
-          Aws::Crt::Io::EventLoopGroup event_loop_group(1);
+          Aws::Crt::Io::EventLoopGroup event_loop_group(4);
           Aws::Crt::Io::DefaultHostResolver default_host_resolver(
               event_loop_group, /*maxHosts=*/8, /*maxTTL=*/30);
           auto client_bootstrap = Aws::MakeShared<Aws::Crt::Io::ClientBootstrap>(
