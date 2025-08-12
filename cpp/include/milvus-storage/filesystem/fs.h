@@ -470,55 +470,59 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     std::mutex cv_mutex;
     std::condition_variable cv;
 
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    for (size_t i = 0; i < offsets.size(); i++) {
-      size_t start = offsets[i];
-      size_t length = lengths[i];
-      std::string local_filepath = local_filepath_prefix + "_" + std::to_string(file_names[i]);
+    {
+      std::unique_lock<std::mutex> lock(mu_);
 
-      Aws::S3Crt::Model::GetObjectRequest req;
-      req.SetBucket(ConvertToAwsString(bucket));
-      req.SetKey(ConvertToAwsString(key));
-      req.SetRange(ConvertToAwsString(FormatRangeString(start, length)));
-      // req.SetResponseStreamFactory([=]() {
-      //   return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
-      // });
-      req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
-        return Aws::New<Aws::FStream>("GetObjectStream",
-                                      local_filepath.c_str(),
-                                      std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-      }));
+      auto start_time = std::chrono::high_resolution_clock::now();
+      
+      for (size_t i = 0; i < offsets.size(); i++) {
+        size_t start = offsets[i];
+        size_t length = lengths[i];
+        std::string local_filepath = local_filepath_prefix + "_" + std::to_string(file_names[i]);
 
-      s3_crt_client_->GetObjectAsync(req, 
-          [this, i, &local_filepath, &completed_requests, &offsets, &cv, &cv_mutex, &mmap_func](
-              const Aws::S3Crt::S3CrtClient*, const Aws::S3Crt::Model::GetObjectRequest&,
-              const Aws::S3Crt::Model::GetObjectOutcome& outcome,
-              const std::shared_ptr<const Aws::Client::AsyncCallerContext>&) {
-          
-          // auto end_time = std::chrono::high_resolution_clock::now();
-          // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-          // LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " " << duration.count() << "ms";
+        Aws::S3Crt::Model::GetObjectRequest req;
+        req.SetBucket(ConvertToAwsString(bucket));
+        req.SetKey(ConvertToAwsString(key));
+        req.SetRange(ConvertToAwsString(FormatRangeString(start, length)));
+        // req.SetResponseStreamFactory([=]() {
+        //   return Aws::New<DirectIOStream>("S3DirectIOStream", local_filepath);
+        // });
+        req.SetResponseStreamFactory(Aws::IOStreamFactory([local_filepath](){ 
+          return Aws::New<Aws::FStream>("GetObjectStream",
+                                        local_filepath.c_str(),
+                                        std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
+        }));
 
-          if (outcome.IsSuccess()) {
-            outcome.GetResult().GetBody().flush();
-            // mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
-              mmap_func(i);
-              if (++completed_requests == offsets.size()) {
-                  std::lock_guard<std::mutex> lock(cv_mutex);
-                  cv.notify_one();
-              }
-            // });
-          } else {
-              LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " failed";
-              remove(local_filepath.c_str());
-              if (++completed_requests == offsets.size()) {
-                  std::lock_guard<std::mutex> lock(cv_mutex);
-                  cv.notify_one();
-              }
-          }
-          // LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " completed";
-      });
+        s3_crt_client_->GetObjectAsync(req, 
+            [this, i, &local_filepath, &completed_requests, &offsets, &cv, &cv_mutex, &mmap_func](
+                const Aws::S3Crt::S3CrtClient*, const Aws::S3Crt::Model::GetObjectRequest&,
+                const Aws::S3Crt::Model::GetObjectOutcome& outcome,
+                const std::shared_ptr<const Aws::Client::AsyncCallerContext>&) {
+            
+            // auto end_time = std::chrono::high_resolution_clock::now();
+            // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            // LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " " << duration.count() << "ms";
+
+            if (outcome.IsSuccess()) {
+              outcome.GetResult().GetBody().flush();
+              // mmap_thread_pool_->enqueue([this, i, &local_filepath, &mmap_func, &completed_requests, &offsets, &cv, &cv_mutex]() {
+                mmap_func(i);
+                if (++completed_requests == offsets.size()) {
+                    std::lock_guard<std::mutex> lock(cv_mutex);
+                    cv.notify_one();
+                }
+              // });
+            } else {
+                LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " failed";
+                remove(local_filepath.c_str());
+                if (++completed_requests == offsets.size()) {
+                    std::lock_guard<std::mutex> lock(cv_mutex);
+                    cv.notify_one();
+                }
+            }
+            // LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " completed";
+        });
+      }
     }
 
     std::unique_lock<std::mutex> lock(cv_mutex);
@@ -568,6 +572,8 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
       });
     }
 
+
+
     std::unique_lock<std::mutex> lock(cv_mutex);
     cv.wait(lock, [&] { return completed_requests == offsets.size(); });
 
@@ -577,6 +583,7 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
   private:
     std::shared_ptr<Aws::S3Crt::S3CrtClient> s3_crt_client_ = nullptr;
     std::shared_ptr<ThreadPool> mmap_thread_pool_ = nullptr;
+    std::mutex mu_;
 };
 
 class ArrowFileSystemSingleton {
