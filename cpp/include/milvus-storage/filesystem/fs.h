@@ -469,6 +469,8 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     std::atomic<size_t> completed_requests = 0;
     std::mutex cv_mutex;
     std::condition_variable cv;
+
+    auto start_time = std::chrono::high_resolution_clock::now();
     
     for (size_t i = 0; i < offsets.size(); i++) {
       size_t start = offsets[i];
@@ -488,10 +490,8 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
                                       std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
       }));
 
-      auto start_time = std::chrono::high_resolution_clock::now();
-
       s3_crt_client_->GetObjectAsync(req, 
-          [this, i, &local_filepath, &completed_requests, &offsets, &cv, &cv_mutex, &mmap_func, start_time](
+          [this, i, &local_filepath, &completed_requests, &offsets, &cv, &cv_mutex, &mmap_func](
               const Aws::S3Crt::S3CrtClient*, const Aws::S3Crt::Model::GetObjectRequest&,
               const Aws::S3Crt::Model::GetObjectOutcome& outcome,
               const std::shared_ptr<const Aws::Client::AsyncCallerContext>&) {
