@@ -470,10 +470,10 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     std::mutex cv_mutex;
     std::condition_variable cv;
 
+    auto start_time = std::chrono::high_resolution_clock::now();
+
     {
       // std::unique_lock<std::mutex> lock(mu_);
-
-      auto start_time = std::chrono::high_resolution_clock::now();
       
       for (size_t i = 0; i < offsets.size(); i++) {
         size_t start = offsets[i];
