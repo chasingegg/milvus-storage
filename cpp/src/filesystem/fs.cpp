@@ -134,7 +134,7 @@ std::shared_ptr<S3CrtClientWrapper> ArrowFileSystemSingleton::createCrtClient(co
   if (!config.region.empty()) {
       client_config.region = ConvertToAwsString(config.region);
   }
-  client_config.throughputTargetGbps = 25;
+  client_config.throughputTargetGbps = 30;
   client_config.maxConnections = 80;
 
   std::cout << "FUCK client_config.endpointOverride: " << client_config.endpointOverride.c_str() << std::endl;
