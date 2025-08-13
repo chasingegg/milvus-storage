@@ -470,10 +470,10 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     std::mutex cv_mutex;
     std::condition_variable cv;
 
-    auto start_time = std::chrono::high_resolution_clock::now();
 
     {
       // std::unique_lock<std::mutex> lock(mu_);
+      auto start_time = std::chrono::high_resolution_clock::now();
       
       for (size_t i = 0; i < offsets.size(); i++) {
         size_t start = offsets[i];
@@ -494,14 +494,14 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
         }));
 
         s3_crt_client_->GetObjectAsync(req, 
-            [this, i, &local_filepath, &completed_requests, &offsets, &cv, &cv_mutex, &mmap_func](
+            [this, i, &local_filepath, &completed_requests, &offsets, &cv, &cv_mutex, &mmap_func, start_time](
                 const Aws::S3Crt::S3CrtClient*, const Aws::S3Crt::Model::GetObjectRequest&,
                 const Aws::S3Crt::Model::GetObjectOutcome& outcome,
                 const std::shared_ptr<const Aws::Client::AsyncCallerContext>&) {
             
-            // auto end_time = std::chrono::high_resolution_clock::now();
-            // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-            // LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " " << duration.count() << "ms";
+            auto end_time = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+            LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " " << duration.count() << "ms";
 
             if (outcome.IsSuccess()) {
               outcome.GetResult().GetBody().flush();
@@ -520,7 +520,7 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
                     cv.notify_one();
                 }
             }
-            // LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " completed";
+            LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << i << " completed";
         });
       }
     }
@@ -528,9 +528,9 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
     std::unique_lock<std::mutex> lock(cv_mutex);
     cv.wait(lock, [&] { return completed_requests == offsets.size(); });
 
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << " " << duration.count() << "ms";
+    // auto end_time = std::chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    // LOG_STORAGE_INFO_ << "FUCK GetFileAsync " << " " << duration.count() << "ms";
 
     // Note: The caller of this function is responsible for deleting the
     // downloaded files on disk using the path in the returned MappedFile objects.
