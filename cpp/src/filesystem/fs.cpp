@@ -136,7 +136,7 @@ std::shared_ptr<S3CrtClientWrapper> ArrowFileSystemSingleton::createCrtClient(co
   }
   client_config.throughputTargetGbps = 30;
   client_config.maxConnections = 100;
-  clientConfig.executor = std::make_shared<Aws::Utils::Threading::PooledThreadExecutor>(64);
+  client_config.executor = std::make_shared<Aws::Utils::Threading::PooledThreadExecutor>(64);
 
   std::cout << "FUCK client_config.endpointOverride: " << client_config.endpointOverride.c_str() << std::endl;
   std::cout << "FUCK client_config.region: " << client_config.region.c_str() << " region:" << config.region << std::endl;
