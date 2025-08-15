@@ -547,8 +547,7 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
       size_t start = offsets[i];
       size_t length = lengths[i];
 
-      // Aws::S3Crt::Model::GetObjectRequest req;
-      Aws::S3::Model::GetObjectRequest req;
+      Aws::S3Crt::Model::GetObjectRequest req;
       req.SetBucket(ConvertToAwsString(bucket));
       req.SetKey(ConvertToAwsString(key));
       req.SetRange(ConvertToAwsString(FormatRangeString(start, length)));
@@ -556,7 +555,7 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
 
       auto start_time = std::chrono::high_resolution_clock::now();
 
-      s3_crt_client_->GetObject(req);
+      auto outcome = s3_crt_client_->GetObject(req);
 
     //   s3_crt_client_->GetObjectAsync(req, 
     //       [this, i, &completed_requests, &offsets, &cv, &cv_mutex, start_time](
