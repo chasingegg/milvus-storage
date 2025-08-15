@@ -556,6 +556,7 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
       auto start_time = std::chrono::high_resolution_clock::now();
 
       auto outcome = s3_crt_client_->GetObject(req);
+    }
 
     //   s3_crt_client_->GetObjectAsync(req, 
     //       [this, i, &completed_requests, &offsets, &cv, &cv_mutex, start_time](
