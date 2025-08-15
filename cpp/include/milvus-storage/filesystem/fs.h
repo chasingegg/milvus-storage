@@ -555,27 +555,27 @@ class S3CrtClientWrapper : public Aws::S3Crt::S3CrtClient {
 
       auto start_time = std::chrono::high_resolution_clock::now();
 
-      s3_crt_client_->GetObjectAsync(req, 
-          [this, i, &completed_requests, &offsets, &cv, &cv_mutex, start_time](
-              const Aws::S3Crt::S3CrtClient*, const Aws::S3Crt::Model::GetObjectRequest&,
-              const Aws::S3Crt::Model::GetObjectOutcome& outcome,
-              const std::shared_ptr<const Aws::Client::AsyncCallerContext>&) {
+      s3_crt_client_->GetObject(req);
+
+    //   s3_crt_client_->GetObjectAsync(req, 
+    //       [this, i, &completed_requests, &offsets, &cv, &cv_mutex, start_time](
+    //           const Aws::S3Crt::S3CrtClient*, const Aws::S3Crt::Model::GetObjectRequest&,
+    //           const Aws::S3Crt::Model::GetObjectOutcome& outcome,
+    //           const std::shared_ptr<const Aws::Client::AsyncCallerContext>&) {
           
-          auto end_time = std::chrono::high_resolution_clock::now();
-          auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-          LOG_STORAGE_INFO_ << "FUCK GetMemAsync " << i << " " << duration.count() << "ms";
+    //       auto end_time = std::chrono::high_resolution_clock::now();
+    //       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    //       LOG_STORAGE_INFO_ << "FUCK GetMemAsync " << i << " " << duration.count() << "ms";
 
-          if (++completed_requests == offsets.size()) {
-              std::lock_guard<std::mutex> lock(cv_mutex);
-              cv.notify_one();
-          }
-      });
-    }
+    //       if (++completed_requests == offsets.size()) {
+    //           std::lock_guard<std::mutex> lock(cv_mutex);
+    //           cv.notify_one();
+    //       }
+    //   });
+    // }
 
-
-
-    std::unique_lock<std::mutex> lock(cv_mutex);
-    cv.wait(lock, [&] { return completed_requests == offsets.size(); });
+    // std::unique_lock<std::mutex> lock(cv_mutex);
+    // cv.wait(lock, [&] { return completed_requests == offsets.size(); });
 
     return offsets.size();
   }
