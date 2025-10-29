@@ -40,7 +40,7 @@
 #include <optional>
 #include <shared_mutex>
 #include <thread>
-
+#include <iostream>
 #include <aws/core/Aws.h>
 #include <aws/core/Region.h>
 #include <aws/core/VersionConfig.h>
@@ -768,7 +768,13 @@ class ClientBuilder {
 
     if (io_context) {
       // TODO: Once ARROW-15035 is done we can get rid of the "at least 25" fallback
+      std::cout << "FUCK io context" << std::endl;
       client_config_.maxConnections = std::max(io_context->executor()->GetCapacity(), 25);
+      std::cout << "FUCK max connections: " << client_config_.maxConnections << std::endl;
+      client_config_.maxConnections = 100;
+    } else {
+      std::cout << "FUCK no io context" << std::endl;
+      client_config_.maxConnections = 100;
     }
 
     const bool use_virtual_addressing = options_.endpoint_override.empty() || options_.force_virtual_addressing;
