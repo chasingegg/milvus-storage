@@ -770,11 +770,11 @@ class ClientBuilder {
       // TODO: Once ARROW-15035 is done we can get rid of the "at least 25" fallback
       std::cout << "FUCK io context" << std::endl;
       client_config_.maxConnections = std::max(io_context->executor()->GetCapacity(), 25);
-      std::cout << "FUCK max connections: " << client_config_.maxConnections << std::endl;
-      client_config_.maxConnections = 100;
+      std::cout << "FUCK max connections: " << client_config_.maxConnections << " " << io_context->executor()->GetCapacity() << std::endl;
+      client_config_.maxConnections = 140;
     } else {
       std::cout << "FUCK no io context" << std::endl;
-      client_config_.maxConnections = 100;
+      client_config_.maxConnections = 140;
     }
 
     const bool use_virtual_addressing = options_.endpoint_override.empty() || options_.force_virtual_addressing;
