@@ -24,6 +24,7 @@
 #include <thread>
 #include <string>
 #include <vector>
+#include <iostream>
 
 #include <arrow/util/logging.h>
 #include <arrow/result.h>
@@ -546,7 +547,11 @@ arrow::Result<std::shared_ptr<S3ClientHolder>> ClientBuilder::BuildClient(
     client_config_.maxConnections = std::max(io_context->executor()->GetCapacity(), 25);
   }
 
-  client_config_.maxConnections = std::max(client_config_.maxConnections, options_.max_connections);
+  std::cout << "FUCK maxConnections: " << client_config_.maxConnections << std::endl;
+  std::cout << "FUCK options_.max_connections: " << options_.max_connections << std::endl;
+  client_config_.maxConnections = std::max(client_config_.maxConnections, uint32_t(100));
+
+  std::cout << "FUCK maxConnections2: " << client_config_.maxConnections << std::endl;
 
   const bool use_virtual_addressing = options_.endpoint_override.empty() || options_.force_virtual_addressing;
 
