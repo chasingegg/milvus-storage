@@ -541,6 +541,7 @@ class ObjectInputFile final : public arrow::io::RandomAccessFile {
     if (nbytes == 0) {
       return 0;
     }
+    LOG_STORAGE_INFO_ << "GAOCHAO ReadAt: path=" << path_.full_path << ", position=" << position << ", nbytes=" << nbytes << " content_length=" << content_length_;
 
     // Read the desired range of bytes
     ARROW_ASSIGN_OR_RAISE(auto client_lock, holder_->Lock());
